@@ -1,0 +1,12 @@
+[package]
+name = "reset"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.13.1", features = ["advanced", "canvas", "image", "svg"] }
+oxiced = "0.2.0"
+zbus = "5.3.1"
+#re_set-lib = "5.2.5"
+re_set-lib = { git = "https://github.com/Xetibo/ReSet-Lib", branch = "dashie-2" }
+# TODO beforepr add reset lib
