@@ -1,6 +1,6 @@
 use iced::{widget::row, Element};
 
-use crate::Message;
+use crate::ReSetMessage;
 
 #[derive(Default)]
 pub struct WirelessModel {}
@@ -18,7 +18,7 @@ impl WirelessModel {
         match msg {}
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<ReSetMessage> {
         println!("display wireless page");
         row![].into()
     }

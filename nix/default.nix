@@ -63,6 +63,7 @@ rustPlatform.buildRustPackage rec {
     inherit lockFile;
     outputHashes = {
       "re_set-lib-5.2.5" = "";
+      "reset_daemon-2.2.0" = "";
     };
   };
 
