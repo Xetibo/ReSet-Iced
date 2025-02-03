@@ -1,10 +1,18 @@
-use audio::{AudioModel, AudioMsg};
-use iced::{widget::column, widget::row, Application, Element, Task, Theme};
+use std::rc::Rc;
+
+use audio::{audio::AudioModel, audio::AudioMsg};
+use iced::{
+    futures::executor::block_on,
+    widget::{column, row},
+    Application, Element, Task, Theme,
+};
 use network::network::{NetworkModel, NetworkMsg};
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
+use zbus::Connection;
 
 mod audio;
 mod network;
+mod utils;
 
 #[derive(Default, Debug, Clone)]
 enum PageId {
@@ -14,8 +22,8 @@ enum PageId {
     Network,
 }
 
-#[derive(Default)]
 struct ReSet<'a> {
+    ctx: Rc<Connection>,
     current_page: PageId,
     audio_model: AudioModel<'a>,
     network_model: NetworkModel,
@@ -56,9 +64,14 @@ impl<'a> ReSet<'a> {
     //    }
     //}
     fn new() -> (Self, Task<Message>) {
+        // TODO beforepr handle error
+        let ctx = Rc::new(block_on(Connection::session()).unwrap());
         (
             Self {
-                ..Default::default()
+                ctx: ctx.clone(),
+                current_page: Default::default(),
+                audio_model: block_on(AudioModel::new(&ctx.clone())),
+                network_model: Default::default(),
             },
             iced::widget::text_input::focus("search_box"),
         )
@@ -70,7 +83,10 @@ impl<'a> ReSet<'a> {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SubMsgAudio(audio_msg) => self.audio_model.update(audio_msg),
+            Message::SubMsgAudio(audio_msg) => {
+                let update_fn = async || self.audio_model.update(audio_msg).await;
+                block_on(update_fn());
+            }
             Message::SubMsgNetwork(network_msg) => self.network_model.update(network_msg),
             Message::SetPage(page_id) => self.current_page = page_id,
         }
@@ -98,7 +114,8 @@ impl<'a> ReSet<'a> {
     }
 }
 
-pub fn main() -> Result<(), iced::Error> {
+#[tokio::main]
+pub async fn main() -> Result<(), iced::Error> {
     iced::application(ReSet::title, ReSet::update, ReSet::view)
         .theme(ReSet::theme)
         .run_with(ReSet::new)
