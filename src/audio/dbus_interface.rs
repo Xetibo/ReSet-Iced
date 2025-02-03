@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use zbus::{proxy, zvariant::Type};
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, Type, PartialEq, Eq)]
 pub struct AudioSink {
     pub index: u32,
     pub name: String,
@@ -10,6 +10,12 @@ pub struct AudioSink {
     pub volume: Vec<u32>,
     pub muted: bool,
     pub active: i32,
+}
+
+impl ToString for AudioSink {
+    fn to_string(&self) -> String {
+        self.alias.clone()
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
@@ -119,7 +125,7 @@ pub trait AudioDbus {
         sink: AudioSink,
     ) -> zbus::Result<()>;
     fn set_input_stream_volume(&self, index: u32, channels: u16, volume: u32) -> zbus::Result<()>;
-    fn set_input_stream_mute(&self, index: u32, channels: u16, volume: u32) -> zbus::Result<()>;
+    fn set_input_stream_mute(&self, index: u32, muted: bool) -> zbus::Result<()>;
 
     fn list_output_streams(&self) -> zbus::Result<Vec<OutputStream>>;
     fn set_source_of_output_stream(
@@ -128,7 +134,7 @@ pub trait AudioDbus {
         source: AudioSource,
     ) -> zbus::Result<()>;
     fn set_output_stream_volume(&self, index: u32, channels: u16, volume: u32) -> zbus::Result<()>;
-    fn set_output_stream_mute(&self, index: u32, channels: u16, volume: u32) -> zbus::Result<()>;
+    fn set_output_stream_mute(&self, index: u32, muted: bool) -> zbus::Result<()>;
 
     fn list_cards(&self) -> zbus::Result<Vec<Card>>;
     fn set_card_profile_of_device(
