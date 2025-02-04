@@ -123,21 +123,21 @@ impl TIndex for OutputStream {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
-pub struct Card {
+pub struct AudioCard {
     pub index: u32,
     pub name: String,
-    pub profiles: Vec<CardProfile>,
+    pub profiles: Vec<AudioCardProfile>,
     pub active_profile: String,
 }
 
-impl TIndex for Card {
+impl TIndex for AudioCard {
     fn index(&self) -> u32 {
         self.index
     }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
-pub struct CardProfile {
+pub struct AudioCardProfile {
     pub name: String,
     pub description: String,
     pub available: bool,
@@ -211,7 +211,7 @@ pub trait AudioDbus {
     fn set_output_stream_volume(&self, index: u32, channels: u16, volume: u32) -> zbus::Result<()>;
     fn set_output_stream_mute(&self, index: u32, muted: bool) -> zbus::Result<()>;
 
-    fn list_cards(&self) -> zbus::Result<Vec<Card>>;
+    fn list_cards(&self) -> zbus::Result<Vec<AudioCard>>;
     fn set_card_profile_of_device(
         &self,
         device_index: u32,

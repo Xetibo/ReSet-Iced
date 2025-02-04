@@ -1,16 +1,15 @@
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
-use audio::audio::{watch_audio_dbus_signals, AudioModel, AudioMsg};
+use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg};
 use iced::{
     futures::{
-        self,
         channel::mpsc::{self, Sender},
         executor::block_on,
         SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::{column, row, shader::wgpu::core::identity::Input},
-    Application, Element, Subscription, Task, Theme,
+    widget::column,
+    Element, Subscription, Task, Theme,
 };
 use network::network::{NetworkModel, NetworkMsg};
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
@@ -52,63 +51,31 @@ enum Message {
 
 fn some_worker() -> impl Stream<Item = Message> {
     stream::channel(100, |mut output| async move {
-        // Create channel
-        let (mut sender, mut receiver) = mpsc::channel(100);
-
-        output.send(Message::ReceiveSender(sender)).await;
+        let (sender, mut receiver) = mpsc::channel(100);
+        // TODO beforepr handle error
+        let _ = output.send(Message::ReceiveSender(sender)).await;
 
         loop {
-            // Read next input sent from `Application`
             let input = receiver.select_next_some().await;
-
-            match input {
-                Message::StartWorker(pageId, conn) => {
-                    println!("asdfjasdf");
-                    match pageId {
-                        PageId::Audio => watch_audio_dbus_signals(&mut output, conn).await,
-                        PageId::Network => (),
-                    }
+            if let Message::StartWorker(page_id, conn) = input {
+                match page_id {
+                    PageId::Audio => watch_audio_dbus_signals(&mut output, conn).await,
+                    PageId::Network => (),
                 }
-                Message::SubMsgAudio(audio_msg) => (),
-                Message::SubMsgNetwork(network_msg) => (),
-                Message::SetPage(page_id) => (),
-                Message::ReceiveSender(sender) => (),
             }
         }
     })
 }
 
 impl ReSet {
-    //fn subscription(&self) -> iced::Subscription<Self::Message> {
-    //    event::listen_with(|event, _status, _id| match event {
-    //        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-    //            modifiers: _,
-    //            key: iced::keyboard::key::Key::Named(Named::Escape),
-    //            modified_key: _,
-    //            physical_key: _,
-    //            location: _,
-    //            text: _,
-    //        }) => Some(Message::Exit),
-    //        _ => None,
-    //    })
-    //}
-    //
     fn subscription(&self) -> Subscription<Message> {
         Subscription::run(some_worker)
     }
-    //
+
     fn theme(&self) -> Theme {
         oxiced::theme::get_theme()
     }
 
-    // remove the annoying background color
-    //fn style(&self, theme: &Self::Theme) -> iced_layershell::Appearance {
-    //    let palette = theme.extended_palette();
-    //    iced_layershell::Appearance {
-    //        background_color: iced::Color::TRANSPARENT,
-    //        text_color: palette.background.base.text,
-    //    }
-    //}
     fn new() -> (Self, Task<Message>) {
         // TODO beforepr handle error
         let ctx = Arc::new(block_on(Connection::session()).unwrap());
@@ -120,12 +87,12 @@ impl ReSet {
                 audio_model: block_on(AudioModel::new(&ctx.clone())),
                 network_model: Default::default(),
             },
-            iced::widget::text_input::focus("search_box"),
+            Task::none(),
         )
     }
 
     fn title(&self) -> String {
-        String::from("OxiPaste")
+        String::from("ReSet")
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -144,14 +111,12 @@ impl ReSet {
                 Task::done(Message::StartWorker(page_id, self.ctx.clone()))
             }
             Message::StartWorker(page_id, connection) => {
-                println!("'128397129837");
                 match &mut self.sender {
                     SenderOrNone::None => (),
                     SenderOrNone::Sender(sender) => {
-                        println!("sadlkjfasdlkfj");
                         let fun =
                             async || sender.send(Message::StartWorker(page_id, connection)).await;
-                        block_on(fun());
+                        let _ = block_on(fun());
                     }
                 };
                 Task::none()
@@ -179,9 +144,9 @@ impl ReSet {
         .into()
     }
 
-    fn scale_factor(&self) -> f64 {
-        1.0
-    }
+    //fn scale_factor(&self) -> f64 {
+    //    1.0
+    //}
 }
 
 #[tokio::main]
