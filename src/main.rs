@@ -1,10 +1,16 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
-use audio::{audio::AudioModel, audio::AudioMsg};
+use audio::audio::{watch_audio_dbus_signals, AudioModel, AudioMsg};
 use iced::{
-    futures::executor::block_on,
-    widget::{column, row},
-    Application, Element, Task, Theme,
+    futures::{
+        self,
+        channel::mpsc::{self, Sender},
+        executor::block_on,
+        SinkExt, Stream, StreamExt,
+    },
+    stream,
+    widget::{column, row, shader::wgpu::core::identity::Input},
+    Application, Element, Subscription, Task, Theme,
 };
 use network::network::{NetworkModel, NetworkMsg};
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
@@ -14,7 +20,7 @@ mod audio;
 mod network;
 mod utils;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Copy)]
 enum PageId {
     // Chosen as it is probably the most useful page
     #[default]
@@ -22,10 +28,16 @@ enum PageId {
     Network,
 }
 
-struct ReSet<'a> {
-    ctx: Rc<Connection>,
+enum SenderOrNone {
+    None,
+    Sender(Sender<Message>),
+}
+
+struct ReSet {
+    sender: SenderOrNone,
+    ctx: Arc<Connection>,
     current_page: PageId,
-    audio_model: AudioModel<'a>,
+    audio_model: AudioModel<'static>,
     network_model: NetworkModel,
 }
 
@@ -34,9 +46,39 @@ enum Message {
     SubMsgAudio(AudioMsg),
     SubMsgNetwork(NetworkMsg),
     SetPage(PageId),
+    StartWorker(PageId, Arc<Connection>),
+    ReceiveSender(Sender<Message>),
 }
 
-impl<'a> ReSet<'a> {
+fn some_worker() -> impl Stream<Item = Message> {
+    stream::channel(100, |mut output| async move {
+        // Create channel
+        let (mut sender, mut receiver) = mpsc::channel(100);
+
+        output.send(Message::ReceiveSender(sender)).await;
+
+        loop {
+            // Read next input sent from `Application`
+            let input = receiver.select_next_some().await;
+
+            match input {
+                Message::StartWorker(pageId, conn) => {
+                    println!("asdfjasdf");
+                    match pageId {
+                        PageId::Audio => watch_audio_dbus_signals(&mut output, conn).await,
+                        PageId::Network => (),
+                    }
+                }
+                Message::SubMsgAudio(audio_msg) => (),
+                Message::SubMsgNetwork(network_msg) => (),
+                Message::SetPage(page_id) => (),
+                Message::ReceiveSender(sender) => (),
+            }
+        }
+    })
+}
+
+impl ReSet {
     //fn subscription(&self) -> iced::Subscription<Self::Message> {
     //    event::listen_with(|event, _status, _id| match event {
     //        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
@@ -50,6 +92,10 @@ impl<'a> ReSet<'a> {
     //        _ => None,
     //    })
     //}
+    //
+    fn subscription(&self) -> Subscription<Message> {
+        Subscription::run(some_worker)
+    }
     //
     fn theme(&self) -> Theme {
         oxiced::theme::get_theme()
@@ -65,9 +111,10 @@ impl<'a> ReSet<'a> {
     //}
     fn new() -> (Self, Task<Message>) {
         // TODO beforepr handle error
-        let ctx = Rc::new(block_on(Connection::session()).unwrap());
+        let ctx = Arc::new(block_on(Connection::session()).unwrap());
         (
             Self {
+                sender: SenderOrNone::None,
                 ctx: ctx.clone(),
                 current_page: Default::default(),
                 audio_model: block_on(AudioModel::new(&ctx.clone())),
@@ -86,11 +133,34 @@ impl<'a> ReSet<'a> {
             Message::SubMsgAudio(audio_msg) => {
                 let update_fn = async || self.audio_model.update(audio_msg).await;
                 block_on(update_fn());
+                Task::none()
             }
-            Message::SubMsgNetwork(network_msg) => self.network_model.update(network_msg),
-            Message::SetPage(page_id) => self.current_page = page_id,
+            Message::SubMsgNetwork(network_msg) => {
+                self.network_model.update(network_msg);
+                Task::none()
+            }
+            Message::SetPage(page_id) => {
+                self.current_page = page_id;
+                Task::done(Message::StartWorker(page_id, self.ctx.clone()))
+            }
+            Message::StartWorker(page_id, connection) => {
+                println!("'128397129837");
+                match &mut self.sender {
+                    SenderOrNone::None => (),
+                    SenderOrNone::Sender(sender) => {
+                        println!("sadlkjfasdlkfj");
+                        let fun =
+                            async || sender.send(Message::StartWorker(page_id, connection)).await;
+                        block_on(fun());
+                    }
+                };
+                Task::none()
+            }
+            Message::ReceiveSender(sender) => {
+                self.sender = SenderOrNone::Sender(sender);
+                Task::none()
+            }
         }
-        Task::none()
     }
 
     fn view(&self) -> Element<Message> {
@@ -118,5 +188,6 @@ impl<'a> ReSet<'a> {
 pub async fn main() -> Result<(), iced::Error> {
     iced::application(ReSet::title, ReSet::update, ReSet::view)
         .theme(ReSet::theme)
+        .subscription(ReSet::subscription)
         .run_with(ReSet::new)
 }
