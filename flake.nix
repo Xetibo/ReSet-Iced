@@ -52,6 +52,12 @@
                 libadwaita
                 gdk-pixbuf
                 dbus
+                pulseaudio
+                adwaita-icon-theme
+                python312Packages.aiohttp
+                python312Packages.toml
+                flatpak
+                flatpak-builder
 
                 (rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
                 cargo

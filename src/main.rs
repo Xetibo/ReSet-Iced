@@ -1,6 +1,15 @@
-use std::sync::Arc;
+use std::{
+    ops::RangeInclusive,
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
 
 use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg};
+use components::{
+    card::Card,
+    comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
+};
+use dbus_interface::ReSetDbusProxy;
 use iced::{
     futures::{
         channel::mpsc::{self, Sender},
@@ -8,14 +17,19 @@ use iced::{
         SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::column,
+    widget::{column, row, text},
     Element, Subscription, Task, Theme,
 };
 use network::network::{NetworkModel, NetworkMsg};
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
+use re_set_lib::write_log_to_file;
+use re_set_lib::LOG;
+use reset_daemon::run_daemon;
 use zbus::Connection;
 
 mod audio;
+mod components;
+mod dbus_interface;
 mod network;
 mod utils;
 
@@ -47,6 +61,7 @@ enum Message {
     SetPage(PageId),
     StartWorker(PageId, Arc<Connection>),
     ReceiveSender(Sender<Message>),
+    Test,
 }
 
 fn some_worker() -> impl Stream<Item = Message> {
@@ -59,7 +74,9 @@ fn some_worker() -> impl Stream<Item = Message> {
             let input = receiver.select_next_some().await;
             if let Message::StartWorker(page_id, conn) = input {
                 match page_id {
-                    PageId::Audio => watch_audio_dbus_signals(&mut output, conn).await,
+                    PageId::Audio => watch_audio_dbus_signals(&mut output, conn)
+                        .await
+                        .expect("audio watcher failed"), // TODO beforepr
                     PageId::Network => (),
                 }
             }
@@ -79,12 +96,18 @@ impl ReSet {
     fn new() -> (Self, Task<Message>) {
         // TODO beforepr handle error
         let ctx = Arc::new(block_on(Connection::session()).unwrap());
+        let audio_context = async || {
+            AudioModel::new(&ctx.clone())
+                .await
+                .expect("Failed to create audio")
+            // TODO beforepr expect
+        };
         (
             Self {
                 sender: SenderOrNone::None,
                 ctx: ctx.clone(),
                 current_page: Default::default(),
-                audio_model: block_on(AudioModel::new(&ctx.clone())),
+                audio_model: block_on(audio_context()),
                 network_model: Default::default(),
             },
             Task::none(),
@@ -125,11 +148,30 @@ impl ReSet {
                 self.sender = SenderOrNone::Sender(sender);
                 Task::none()
             }
+            Message::Test => {
+                println!("sdlfj");
+                Task::none()
+            }
         }
     }
 
     fn view(&self) -> Element<Message> {
-        column![
+        let picker = CustomPickList::new(
+            PickerVariant::ComboPicker(ComboPickerTitle::new(
+                "This is a text that should be here instead",
+                "something else ",
+            )),
+            vec![23, 23, 23],
+            Some(23),
+            |_| Message::Test,
+        );
+        let slider = oxiced::widgets::oxi_slider::slider(RangeInclusive::new(20, 40), 5, |value| {
+            Message::Test
+        });
+        let cbutton = oxiced::widgets::oxi_button::button("test", ButtonVariant::Primary)
+            .on_press(Message::Test);
+        let card = Card::new(picker, cbutton, slider);
+        column!(
             // TODO beforepr set audio and network
             button("SetAudio", ButtonVariant::Primary).on_press(Message::SetPage(PageId::Audio)),
             button("SetNetwork", ButtonVariant::Primary)
@@ -139,8 +181,9 @@ impl ReSet {
             match self.current_page {
                 PageId::Audio => self.audio_model.view(),
                 PageId::Network => self.network_model.view(),
-            }
-        ]
+            },
+            card.view()
+        )
         .into()
     }
 
@@ -151,6 +194,31 @@ impl ReSet {
 
 #[tokio::main]
 pub async fn main() -> Result<(), iced::Error> {
+    let conn = Connection::session().await.unwrap();
+    let reset_proxy = ReSetDbusProxy::new(&conn).await.unwrap();
+
+    let res = reset_proxy.register_client("ReSet-Iced").await;
+
+    if res.is_err() {
+        // Start daemon and retry
+        let ready = Arc::new(AtomicBool::new(false));
+        let start = std::time::SystemTime::now();
+        tokio::task::spawn(run_daemon(Some(ready.clone())));
+        while !ready.load(std::sync::atomic::Ordering::SeqCst) {
+            if start.elapsed().unwrap_or(Duration::from_secs(1)) >= Duration::from_secs(1) {
+                return Err(iced::Error::WindowCreationFailed(Box::from(
+                    "Failed to get daemon",
+                )));
+            }
+        }
+        // Second try without any catch, this means there was no way to connect to the daemon
+        reset_proxy
+            .register_client("ReSet-Iced")
+            .await
+            .expect("Failed to get daemon");
+        LOG!("Using Bundled Daemon")
+    }
+
     iced::application(ReSet::title, ReSet::update, ReSet::view)
         .theme(ReSet::theme)
         .subscription(ReSet::subscription)

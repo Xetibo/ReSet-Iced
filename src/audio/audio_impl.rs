@@ -85,63 +85,68 @@ where
 }
 
 // This sucks
-pub async fn watch_audio_dbus_signals(sender: &mut Sender<Message>, conn: Arc<Connection>) {
+pub async fn watch_audio_dbus_signals(
+    sender: &mut Sender<Message>,
+    conn: Arc<Connection>,
+) -> Result<(), zbus::Error> {
     let proxy = AudioDbusProxy::new(&conn).await.expect("no proxy");
-    let mut signals = Proxy::receive_all_signals(&proxy.into_inner())
-        .await
-        .unwrap();
+    let mut signals = Proxy::receive_all_signals(&proxy.into_inner()).await?;
     while let Some(msg) = signals.next().await {
         match msg.header().member().unwrap().to_string().as_str() {
             "OutputStreamAdded" | "OutputStreamChanged" => {
-                let obj: OutputStream = msg.body().deserialize().unwrap();
+                let obj: OutputStream = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::AddOutputStream(obj))).await;
             }
             "OutputStreamRemoved" => {
-                let obj: u32 = msg.body().deserialize().unwrap();
+                let obj: u32 = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::RemoveOutputStream(obj))).await;
             }
             "InputStreamAdded" | "InputStreamChanged" => {
-                let obj: InputStream = msg.body().deserialize().unwrap();
+                let obj: InputStream = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::AddInputStream(obj))).await;
             }
             "InputStreamRemoved" => {
-                let obj: u32 = msg.body().deserialize().unwrap();
+                let obj: u32 = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::RemoveInputStream(obj))).await;
             }
             "SinkAdded" | "SinkChanged" => {
-                let obj: AudioSink = msg.body().deserialize().unwrap();
+                let obj: AudioSink = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::AddSink(obj))).await;
             }
             "SinkRemoved" => {
-                let obj: u32 = msg.body().deserialize().unwrap();
+                let obj: u32 = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::RemoveSink(obj))).await;
             }
             "SourceAdded" | "SourceChanged" => {
-                let obj: AudioSource = msg.body().deserialize().unwrap();
+                let obj: AudioSource = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::AddSource(obj))).await;
             }
             "SourceRemoved" => {
-                let obj: u32 = msg.body().deserialize().unwrap();
+                let obj: u32 = msg.body().deserialize()?;
                 let _res = sender.send(wrap(AudioMsg::RemoveSource(obj))).await;
             }
             _ => (),
         }
     }
+    Ok(())
 }
 
 impl AudioModel<'_> {
-    pub async fn new(ctx: &Connection) -> Self {
-        // TODO beforepr unwrap
-        let proxy = Arc::new(create_audio_proxy(ctx).await.unwrap());
-        let sinks = to_map(proxy.list_sinks().await.unwrap());
-        let default_sink = proxy.get_default_sink().await.unwrap();
-        let input_streams = to_map(proxy.list_input_streams().await.unwrap());
-        let sources = to_map(proxy.list_sources().await.unwrap());
-        let default_source = proxy.get_default_source().await.unwrap();
-        let output_streams = to_map(proxy.list_output_streams().await.unwrap());
-        let cards = to_map(proxy.list_cards().await.unwrap());
-        Self {
-            audio_proxy: proxy,
+    pub async fn new(ctx: &Connection) -> Result<Self, zbus::Error> {
+        let proxy = Arc::new(
+            create_audio_proxy(ctx)
+                .await
+                .expect("Could not create proxy for audio"),
+        ); // TODO beforepr expect
+        let sinks = to_map(proxy.list_sinks().await?);
+        let default_sink = proxy.get_default_sink().await?;
+        let input_streams = to_map(proxy.list_input_streams().await?);
+        let sources = to_map(proxy.list_sources().await?);
+        let default_source = proxy.get_default_source().await?;
+        let output_streams = to_map(proxy.list_output_streams().await?);
+        let cards = to_map(proxy.list_cards().await?);
+        Ok(Self {
+            audio_proxy: proxy.clone().into(),
             default_sink: default_sink.index,
             default_source: default_source.index,
             sinks,
@@ -150,7 +155,7 @@ impl AudioModel<'_> {
             output_streams,
             audio_variant: Default::default(),
             cards,
-        }
+        })
     }
 
     pub async fn update(&mut self, msg: AudioMsg) {
@@ -281,7 +286,7 @@ impl AudioModel<'_> {
             let input_streams_cards: Vec<Element<Message>> = self
                 .input_streams
                 .values()
-                .map(|value| input_stream_card_view(value.clone(), &self.sinks))
+                .filter_map(|value| input_stream_card_view(value.clone(), &self.sinks))
                 .collect();
             let mut col = column![];
             col = col.push(sink_card);
@@ -411,8 +416,9 @@ fn source_card_view<'a>(
 fn input_stream_card_view(
     input_stream: InputStream,
     sink_map: &HashMap<u32, AudioSink>,
-) -> Element<'_, Message> {
+) -> Option<Element<'_, Message>> {
     // TODO beforepr number?
+    let current_sink = sink_map.get(&input_stream.sink_index)?;
     let current_volume = get_volume_level(&input_stream.volume);
     let slider = oxi_slider::slider(
         RangeInclusive::new(0, 100_270),
@@ -426,7 +432,6 @@ fn input_stream_card_view(
         },
     )
     .step(2000_u32);
-    let current_sink = sink_map.get(&input_stream.sink_index).unwrap();
     let sinks: Vec<AudioSink> = sink_map.clone().into_values().collect();
     let input_stream_clone = input_stream.clone();
     let pick_list = oxi_picklist::pick_list(sinks, Some(current_sink.clone()), move |sink| {
@@ -435,27 +440,28 @@ fn input_stream_card_view(
             sink,
         ))
     });
-    column![
-        row![
-            column![
-                text(input_stream.application_name.clone()),
-                text(input_stream.name.clone())
+    Some(
+        column![
+            row![
+                column![
+                    text(input_stream.application_name.clone()),
+                    text(input_stream.name.clone())
+                ]
+                .padding(20),
+                pick_list
             ]
             .padding(20),
-            pick_list
-        ]
-        .padding(20),
-        row![
-            button("Mute", ButtonVariant::Primary).on_press(wrap(AudioMsg::SetInputStreamMute(
-                input_stream.index,
-                !input_stream.muted
-            ))),
-            slider
+            row![
+                button("Mute", ButtonVariant::Primary).on_press(wrap(
+                    AudioMsg::SetInputStreamMute(input_stream.index, !input_stream.muted)
+                )),
+                slider
+            ]
+            .padding(20)
         ]
         .padding(20)
-    ]
-    .padding(20)
-    .into()
+        .into(),
+    )
 }
 
 fn output_stream_card_view(
@@ -463,6 +469,7 @@ fn output_stream_card_view(
     source_map: &HashMap<u32, AudioSource>,
 ) -> Option<Element<'_, Message>> {
     // TODO beforepr number?
+    let current_source = source_map.get(&output_stream.source_index)?;
     let current_volume = get_volume_level(&output_stream.volume);
     let slider = oxi_slider::slider(
         RangeInclusive::new(0, 100_270),
@@ -476,7 +483,6 @@ fn output_stream_card_view(
         },
     )
     .step(2000_u32);
-    let current_source = source_map.get(&output_stream.source_index)?;
     let sources: Vec<AudioSource> = source_map.clone().into_values().collect();
     let output_stream_clone = output_stream.clone();
     let pick_list = oxi_picklist::pick_list(sources, Some(current_source.clone()), move |source| {
@@ -522,10 +528,10 @@ fn audio_cards(card: &AudioCard) -> Element<'_, Message> {
         Some(card.active_profile.clone()),
         move |profile| wrap(AudioMsg::SetProfileOfCard(index, profile)),
     );
-    column![
+    column!(
         pick_list,
         text(card.name.clone()),
         text(card.active_profile.clone())
-    ]
+    )
     .into()
 }
