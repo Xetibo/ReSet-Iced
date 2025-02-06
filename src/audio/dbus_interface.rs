@@ -184,14 +184,14 @@ pub trait AudioDbus {
     fn get_default_sink_name(&self) -> zbus::Result<String>;
     fn set_sink_volume(&self, index: u32, channels: u16, volume: u32) -> zbus::Result<()>;
     fn set_sink_mute(&self, index: u32, muted: bool) -> zbus::Result<()>;
-    fn set_default_sink(&self, sink: AudioSink) -> zbus::Result<AudioSink>;
+    fn set_default_sink(&self, sink: String) -> zbus::Result<AudioSink>;
 
     fn list_sources(&self) -> zbus::Result<Vec<AudioSource>>;
     fn get_default_source(&self) -> zbus::Result<AudioSource>;
     fn get_default_source_name(&self) -> zbus::Result<String>;
     fn set_source_volume(&self, index: u32, channels: u16, volume: u32) -> zbus::Result<()>;
     fn set_source_mute(&self, index: u32, muted: bool) -> zbus::Result<()>;
-    fn set_default_source(&self, sink: AudioSource) -> zbus::Result<AudioSource>;
+    fn set_default_source(&self, source: String) -> zbus::Result<AudioSource>;
 
     fn list_input_streams(&self) -> zbus::Result<Vec<InputStream>>;
     fn set_sink_of_input_stream(

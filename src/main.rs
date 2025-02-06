@@ -1,14 +1,9 @@
 use std::{
-    ops::RangeInclusive,
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 
 use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg};
-use components::{
-    card::Card,
-    comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
-};
 use dbus_interface::ReSetDbusProxy;
 use iced::{
     futures::{
@@ -17,7 +12,7 @@ use iced::{
         SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::{column, row, text},
+    widget::column,
     Element, Subscription, Task, Theme,
 };
 use network::network::{NetworkModel, NetworkMsg};
@@ -61,7 +56,6 @@ enum Message {
     SetPage(PageId),
     StartWorker(PageId, Arc<Connection>),
     ReceiveSender(Sender<Message>),
-    Test,
 }
 
 fn some_worker() -> impl Stream<Item = Message> {
@@ -148,29 +142,10 @@ impl ReSet {
                 self.sender = SenderOrNone::Sender(sender);
                 Task::none()
             }
-            Message::Test => {
-                println!("sdlfj");
-                Task::none()
-            }
         }
     }
 
     fn view(&self) -> Element<Message> {
-        let picker = CustomPickList::new(
-            PickerVariant::ComboPicker(ComboPickerTitle::new(
-                "This is a text that should be here instead",
-                "something else ",
-            )),
-            vec![23, 23, 23],
-            Some(23),
-            |_| Message::Test,
-        );
-        let slider = oxiced::widgets::oxi_slider::slider(RangeInclusive::new(20, 40), 5, |value| {
-            Message::Test
-        });
-        let cbutton = oxiced::widgets::oxi_button::button("test", ButtonVariant::Primary)
-            .on_press(Message::Test);
-        let card = Card::new(picker, cbutton, slider);
         column!(
             // TODO beforepr set audio and network
             button("SetAudio", ButtonVariant::Primary).on_press(Message::SetPage(PageId::Audio)),
@@ -182,7 +157,6 @@ impl ReSet {
                 PageId::Audio => self.audio_model.view(),
                 PageId::Network => self.network_model.view(),
             },
-            card.view()
         )
         .into()
     }

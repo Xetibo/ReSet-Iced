@@ -22,14 +22,14 @@ use iced::{
 
 pub struct ComboPickerTitle {
     pub title: String,
-    pub subtitle: String,
+    pub subtitle: Option<String>,
 }
 
 impl ComboPickerTitle {
-    pub fn new(title: impl Into<String>, subtitle: impl Into<String>) -> Self {
+    pub fn new(title: impl Into<String>, subtitle: Option<impl Into<String>>) -> Self {
         Self {
             title: title.into(),
-            subtitle: subtitle.into(),
+            subtitle: subtitle.into_iter().map(|val| val.into()).next_back(),
         }
     }
 }
@@ -554,7 +554,10 @@ where
                 // TODO beforepr why is the wrong title at the top when the title is
                 // vertical::top????
                 draw_text(combo_title.title.clone(), alignment::Vertical::Bottom);
-                draw_text(combo_title.subtitle.clone(), alignment::Vertical::Top);
+                combo_title
+                    .subtitle
+                    .iter()
+                    .for_each(|text| draw_text(text.clone(), alignment::Vertical::Top));
             }
         }
     }
@@ -719,6 +722,10 @@ impl Catalog for Theme {
 
     fn default<'a>() -> StyleFn<'a, Self> {
         Box::new(default)
+    }
+
+    fn default_menu<'a>() -> <Self as menu::Catalog>::Class<'a> {
+        Box::new(oxiced::widgets::oxi_picklist::menu_style)
     }
 
     fn style(&self, class: &StyleFn<'_, Self>, status: Status) -> Style {

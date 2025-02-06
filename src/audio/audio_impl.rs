@@ -3,15 +3,27 @@ use std::{collections::HashMap, error::Error, ops::RangeInclusive, sync::Arc};
 use iced::{
     futures::{channel::mpsc::Sender, SinkExt, StreamExt},
     widget::{column, row, text},
-    Element,
+    Element, Length,
 };
 use oxiced::widgets::{
     oxi_button::{button, ButtonVariant},
-    oxi_picklist, oxi_slider,
+    oxi_checkbox::checkbox,
+    oxi_picklist,
+    oxi_radio::radio,
+    oxi_slider,
+    oxi_svg::{svg_from_path, SvgStyleVariant},
 };
 use zbus::{Connection, Proxy};
 
-use crate::{utils::ignore, Message};
+use crate::{
+    components::{
+        audio_card::Card,
+        audio_device_card::{self, AudioDeviceCard},
+        comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
+    },
+    utils::ignore,
+    Message,
+};
 
 use super::dbus_interface::{
     AudioCard, AudioDbusProxy, AudioSink, AudioSource, InputStream, OutputStream, TIndex,
@@ -23,7 +35,8 @@ pub enum AudioVariant {
     #[default]
     Output,
     Cards,
-    Both,
+    Devices,
+    InputAndOutput,
 }
 
 pub struct AudioModel<'a> {
@@ -146,7 +159,7 @@ impl AudioModel<'_> {
         let output_streams = to_map(proxy.list_output_streams().await?);
         let cards = to_map(proxy.list_cards().await?);
         Ok(Self {
-            audio_proxy: proxy.clone().into(),
+            audio_proxy: proxy,
             default_sink: default_sink.index,
             default_source: default_source.index,
             sinks,
@@ -158,11 +171,11 @@ impl AudioModel<'_> {
         })
     }
 
-    pub async fn update(&mut self, msg: AudioMsg) {
+    pub async fn update(&mut self, msg: AudioMsg) -> Option<()> {
         match msg {
             AudioMsg::SetAudioVariant(audio_variant) => self.audio_variant = audio_variant,
             AudioMsg::SetSinkVolume(index, channels, volume) => {
-                let current_sink = self.sinks.get_mut(&index).unwrap();
+                let current_sink = self.sinks.get_mut(&index)?;
                 set_volume(&mut current_sink.volume, volume);
                 ignore(
                     self.audio_proxy
@@ -172,17 +185,17 @@ impl AudioModel<'_> {
             }
             AudioMsg::SetSinkMute(index, muted) => {
                 // TODO beforepr handle unwrap
-                self.sinks.get_mut(&index).unwrap().muted = muted;
+                self.sinks.get_mut(&index)?.muted = muted;
                 ignore(self.audio_proxy.set_sink_mute(index, muted).await)
             }
             AudioMsg::AddSink(sink) => ignore(self.sinks.insert(sink.index, sink)),
             AudioMsg::RemoveSink(index) => ignore(self.sinks.remove(&index)),
             AudioMsg::SetInputStreamMute(index, muted) => {
-                self.input_streams.get_mut(&index).unwrap().muted = muted;
+                self.input_streams.get_mut(&index)?.muted = muted;
                 ignore(self.audio_proxy.set_input_stream_mute(index, muted).await)
             }
             AudioMsg::SetInputStreamVolume(index, channels, volume) => {
-                let current_input_stream = self.input_streams.get_mut(&index).unwrap();
+                let current_input_stream = self.input_streams.get_mut(&index)?;
                 set_volume(&mut current_input_stream.volume, volume);
                 ignore(
                     self.audio_proxy
@@ -191,10 +204,7 @@ impl AudioModel<'_> {
                 )
             }
             AudioMsg::SetSinkOfInputStream(input_stream, sink) => {
-                self.input_streams
-                    .get_mut(&input_stream.index)
-                    .unwrap()
-                    .sink_index = sink.index;
+                self.input_streams.get_mut(&input_stream.index)?.sink_index = sink.index;
                 ignore(
                     self.audio_proxy
                         .set_sink_of_input_stream(input_stream, sink)
@@ -206,7 +216,7 @@ impl AudioModel<'_> {
             }
             AudioMsg::RemoveInputStream(index) => ignore(self.input_streams.remove(&index)),
             AudioMsg::SetSourceVolume(index, channels, volume) => {
-                let current_source = self.sinks.get_mut(&index).unwrap();
+                let current_source = self.sinks.get_mut(&index)?;
                 set_volume(&mut current_source.volume, volume);
                 ignore(
                     self.audio_proxy
@@ -215,17 +225,17 @@ impl AudioModel<'_> {
                 )
             }
             AudioMsg::SetSourceMute(index, muted) => {
-                self.sources.get_mut(&index).unwrap().muted = muted;
+                self.sources.get_mut(&index)?.muted = muted;
                 ignore(self.audio_proxy.set_source_mute(index, muted).await)
             }
             AudioMsg::AddSource(source) => ignore(self.sources.insert(source.index, source)),
             AudioMsg::RemoveSource(index) => ignore(self.sources.remove(&index)),
             AudioMsg::SetOutputStreamMute(index, muted) => {
-                self.output_streams.get_mut(&index).unwrap().muted = muted;
+                self.output_streams.get_mut(&index)?.muted = muted;
                 ignore(self.audio_proxy.set_output_stream_mute(index, muted).await)
             }
             AudioMsg::SetOutputStreamVolume(index, channels, volume) => {
-                let current_output_stream = self.output_streams.get_mut(&index).unwrap();
+                let current_output_stream = self.output_streams.get_mut(&index)?;
                 set_volume(&mut current_output_stream.volume, volume);
                 ignore(
                     self.audio_proxy
@@ -235,8 +245,7 @@ impl AudioModel<'_> {
             }
             AudioMsg::SetSourceOfOutputStream(output_stream, source) => {
                 self.output_streams
-                    .get_mut(&output_stream.index)
-                    .unwrap()
+                    .get_mut(&output_stream.index)?
                     .source_index = source.index;
                 ignore(
                     self.audio_proxy
@@ -252,16 +261,20 @@ impl AudioModel<'_> {
             // TODO beforepr handle these properly when sink or source changes
             AudioMsg::SetDefaultSink(index) => {
                 self.default_sink = index;
-                let sink = self.sinks.get(&index).unwrap().clone();
-                ignore(self.audio_proxy.set_default_sink(sink).await)
+                let sink = self.sinks.get(&index)?;
+                ignore(self.audio_proxy.set_default_sink(sink.name.clone()).await)
             }
             AudioMsg::SetDefaultSource(index) => {
                 self.default_source = index;
-                let source = self.sources.get(&index).unwrap().clone();
-                ignore(self.audio_proxy.set_default_source(source).await)
+                let source = self.sources.get(&index)?;
+                ignore(
+                    self.audio_proxy
+                        .set_default_source(source.name.clone())
+                        .await,
+                );
             }
             AudioMsg::SetProfileOfCard(index, profile) => {
-                self.cards.get_mut(&index).unwrap().active_profile = profile.clone();
+                self.cards.get_mut(&index)?.active_profile = profile.clone();
                 ignore(
                     self.audio_proxy
                         .set_card_profile_of_device(index, profile)
@@ -269,6 +282,7 @@ impl AudioModel<'_> {
                 )
             }
         }
+        Some(())
     }
 
     pub fn view(&self) -> Element<Message> {
@@ -290,10 +304,24 @@ impl AudioModel<'_> {
                 .collect();
             let mut col = column![];
             col = col.push(sink_card);
-            for elem in input_streams_cards {
+            col = col.push(iced::widget::Space::with_height(10));
+            col = col.push(iced::widget::Rule::horizontal(2));
+            col = col.push(iced::widget::Space::with_height(10));
+            let stream_count = if input_streams_cards.is_empty() {
+                0
+            } else {
+                input_streams_cards.len() - 1
+            };
+            for (i, elem) in input_streams_cards.into_iter().enumerate() {
                 col = col.push(elem);
+                if i != stream_count {
+                    col = col.push(iced::widget::Rule::horizontal(2));
+                }
             }
-            col.into()
+            column!(text("Output").size(30), col.spacing(20))
+                .padding(20)
+                .spacing(20)
+                .into()
         };
         let input = {
             let source_card = source_card_view(self.default_source, &self.sources);
@@ -304,28 +332,55 @@ impl AudioModel<'_> {
                 .collect();
             let mut col = column![];
             col = col.push(source_card);
-            for elem in output_stream_cards {
+            col = col.push(iced::widget::Space::with_height(10));
+            col = col.push(iced::widget::Rule::horizontal(2));
+            col = col.push(iced::widget::Space::with_height(10));
+            let stream_count = if output_stream_cards.is_empty() {
+                0
+            } else {
+                output_stream_cards.len() - 1
+            };
+            for (i, elem) in output_stream_cards.into_iter().enumerate() {
                 col = col.push(elem);
+                if i != stream_count {
+                    col = col.push(iced::widget::Rule::horizontal(2));
+                }
             }
-            col.into()
+            column!(text("Input").size(30), col.spacing(20))
+                .padding(20)
+                .spacing(20)
+                .into()
+        };
+        // TODO beforepr, should these be combined??
+        let devices = {
+            row!(
+                source_device_card_view(self.default_source, &self.sources),
+                sink_device_card_view(self.default_sink, &self.sinks)
+            )
+            .spacing(20)
+            .into()
         };
         let base = match self.audio_variant {
             AudioVariant::Cards => cards,
             AudioVariant::Input => input,
             AudioVariant::Output => output,
-            AudioVariant::Both => row![output, input].into(),
+            AudioVariant::InputAndOutput => row![output, input].into(),
+            AudioVariant::Devices => devices,
         };
         // Make an enum to buttons function
         column![
             row![
-                button("Both", ButtonVariant::Primary)
-                    .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Both))),
+                button("Both", ButtonVariant::Primary).on_press(wrap(AudioMsg::SetAudioVariant(
+                    AudioVariant::InputAndOutput
+                ))),
                 button("Input", ButtonVariant::Primary)
                     .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Input))),
                 button("Output", ButtonVariant::Primary)
                     .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Output))),
                 button("Cards", ButtonVariant::Primary)
                     .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Cards))),
+                button("DeviceCards", ButtonVariant::Primary)
+                    .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Devices))),
             ]
             .padding(20),
             base
@@ -347,7 +402,7 @@ fn get_volume_level(volume: &[u32]) -> u32 {
 }
 
 // TODO beforepr deduplicate
-fn sink_card_view<'a>(sink: u32, sink_map: &'a HashMap<u32, AudioSink>) -> Element<'a, Message> {
+fn sink_card_view(sink: u32, sink_map: &HashMap<u32, AudioSink>) -> Element<'_, Message> {
     // TODO beforepr number?
     let sink = sink_map.get(&sink).unwrap().clone();
     let sinks: Vec<AudioSink> = sink_map.clone().into_values().collect();
@@ -358,27 +413,65 @@ fn sink_card_view<'a>(sink: u32, sink_map: &'a HashMap<u32, AudioSink>) -> Eleme
         move |value| wrap(AudioMsg::SetSinkVolume(sink.index, sink.channels, value)),
     )
     .step(2000_u32);
-    let pick_list = oxi_picklist::pick_list(sinks, Some(sink.clone()), move |sink| {
-        wrap(AudioMsg::SetDefaultSink(sink.index))
-    });
-    column![
-        pick_list,
-        column![text(sink.name.clone()), text(sink.alias.clone())].padding(20),
-        row![
-            button("Mute", ButtonVariant::Primary)
-                .on_press(wrap(AudioMsg::SetSinkMute(sink.index, !sink.muted))),
-            slider
-        ]
-        .padding(20)
-    ]
+    let pick_list = CustomPickList::new(
+        PickerVariant::ComboPicker(ComboPickerTitle::new(sink.alias.clone(), None::<String>)),
+        sinks,
+        Some(sink.clone()),
+        move |sink| wrap(AudioMsg::SetDefaultSink(sink.index)),
+    );
+    // TODO beforepr make the paths relative and use Enum to specify path
+    let icon = if sink.muted {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/volume_muted.svg")
+    } else {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/volume.svg")
+    }
+    .width(Length::Shrink);
+    let mute_button = button(icon, ButtonVariant::Primary)
+        .on_press(wrap(AudioMsg::SetSinkMute(sink.index, !sink.muted)));
+    let card = Card::new(pick_list, mute_button, slider, current_volume);
+    card.view()
+}
+
+fn sink_device_card_view(
+    default_sink_index: u32,
+    sink_map: &HashMap<u32, AudioSink>,
+) -> Element<'_, Message> {
+    let sinks: Vec<AudioSink> = sink_map.clone().into_values().collect();
+    let create_card = |sink: AudioSink| {
+        let current_volume = get_volume_level(&sink.volume);
+        let radio = radio("", sink.index, Some(default_sink_index), |index| {
+            wrap(AudioMsg::SetDefaultSink(index))
+        });
+        let icon = if sink.muted {
+            svg_from_path(SvgStyleVariant::Primary, "./assets/volume_muted.svg")
+        } else {
+            svg_from_path(SvgStyleVariant::Primary, "./assets/volume.svg")
+        }
+        .width(Length::Shrink);
+        let mute_button = button(icon, ButtonVariant::Primary)
+            .on_press(wrap(AudioMsg::SetSinkMute(sink.index, !sink.muted)));
+        let slider = oxi_slider::slider(
+            RangeInclusive::new(0, 100_270),
+            current_volume,
+            move |value| wrap(AudioMsg::SetSinkVolume(sink.index, sink.channels, value)),
+        );
+        AudioDeviceCard::new(mute_button, slider, radio, sink.name.clone())
+    };
+    let cards: Vec<Element<Message>> = sinks
+        .into_iter()
+        .map(create_card)
+        .map(AudioDeviceCard::view)
+        .collect();
+    column!(
+        text("Output devices").size(30),
+        iced::widget::Column::with_children(cards).spacing(20)
+    )
+    .spacing(20)
     .padding(20)
     .into()
 }
 
-fn source_card_view<'a>(
-    source: u32,
-    source_map: &'a HashMap<u32, AudioSource>,
-) -> Element<'a, Message> {
+fn source_card_view(source: u32, source_map: &HashMap<u32, AudioSource>) -> Element<'_, Message> {
     // TODO beforepr number?
     let source = source_map.get(&source).unwrap().clone();
     let sources: Vec<AudioSource> = source_map.clone().into_values().collect();
@@ -395,19 +488,65 @@ fn source_card_view<'a>(
         },
     )
     .step(2000_u32);
-    let pick_list = oxi_picklist::pick_list(sources, Some(source.clone()), move |source| {
-        wrap(AudioMsg::SetDefaultSource(source.index))
-    });
-    column![
-        pick_list,
-        column![text(source.name.clone()), text(source.alias.clone())].padding(20),
-        row![
-            button("Mute", ButtonVariant::Primary)
-                .on_press(wrap(AudioMsg::SetSourceMute(source.index, !source.muted))),
-            slider
-        ]
-        .padding(20)
-    ]
+    let pick_list = CustomPickList::new(
+        PickerVariant::ComboPicker(ComboPickerTitle::new(source.alias.clone(), None::<String>)),
+        sources,
+        Some(source.clone()),
+        move |source| wrap(AudioMsg::SetDefaultSource(source.index)),
+    );
+    let icon = if source.muted {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/mic_muted.svg")
+    } else {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/mic.svg")
+    }
+    .width(Length::Shrink);
+    let mute_button = button(icon, ButtonVariant::Primary)
+        .on_press(wrap(AudioMsg::SetSourceMute(source.index, !source.muted)));
+    let card = Card::new(pick_list, mute_button, slider, current_volume);
+    card.view()
+}
+
+fn source_device_card_view(
+    default_source_index: u32,
+    source_map: &HashMap<u32, AudioSource>,
+) -> Element<'_, Message> {
+    let sources: Vec<AudioSource> = source_map.clone().into_values().collect();
+    let create_card = |source: AudioSource| {
+        let current_volume = get_volume_level(&source.volume);
+        let radio = radio("", source.index, Some(default_source_index), |index| {
+            wrap(AudioMsg::SetDefaultSource(index))
+        });
+        let icon = if source.muted {
+            svg_from_path(SvgStyleVariant::Primary, "./assets/mic_muted.svg")
+        } else {
+            svg_from_path(SvgStyleVariant::Primary, "./assets/mic.svg")
+        }
+        .width(Length::Shrink);
+        let mute_button = button(icon, ButtonVariant::Primary)
+            .on_press(wrap(AudioMsg::SetSourceMute(source.index, !source.muted)));
+        let slider = oxi_slider::slider(
+            RangeInclusive::new(0, 100_270),
+            current_volume,
+            move |value| {
+                wrap(AudioMsg::SetSourceVolume(
+                    source.index,
+                    source.channels,
+                    value,
+                ))
+            },
+        );
+        AudioDeviceCard::new(mute_button, slider, radio, source.name.clone())
+    };
+    let cards: Vec<Element<Message>> = sources
+        .into_iter()
+        .map(create_card)
+        .map(AudioDeviceCard::view)
+        .collect();
+    column!(
+        text("Input devices").size(30),
+        iced::widget::Column::with_children(cards).spacing(20)
+    )
+    .spacing(20)
     .padding(20)
     .into()
 }
@@ -434,34 +573,35 @@ fn input_stream_card_view(
     .step(2000_u32);
     let sinks: Vec<AudioSink> = sink_map.clone().into_values().collect();
     let input_stream_clone = input_stream.clone();
-    let pick_list = oxi_picklist::pick_list(sinks, Some(current_sink.clone()), move |sink| {
-        wrap(AudioMsg::SetSinkOfInputStream(
-            input_stream_clone.clone(),
-            sink,
-        ))
-    });
-    Some(
-        column![
-            row![
-                column![
-                    text(input_stream.application_name.clone()),
-                    text(input_stream.name.clone())
-                ]
-                .padding(20),
-                pick_list
-            ]
-            .padding(20),
-            row![
-                button("Mute", ButtonVariant::Primary).on_press(wrap(
-                    AudioMsg::SetInputStreamMute(input_stream.index, !input_stream.muted)
-                )),
-                slider
-            ]
-            .padding(20)
-        ]
-        .padding(20)
-        .into(),
-    )
+    let pick_list = CustomPickList::new(
+        PickerVariant::ComboPicker(ComboPickerTitle::new(
+            format!(
+                "{}: {}",
+                input_stream.application_name.clone(),
+                input_stream.name.clone()
+            ),
+            Some(current_sink.alias.clone()),
+        )),
+        sinks,
+        Some(current_sink.clone()),
+        move |sink| {
+            wrap(AudioMsg::SetSinkOfInputStream(
+                input_stream_clone.clone(),
+                sink,
+            ))
+        },
+    );
+    let icon = if input_stream.muted {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/volume_muted.svg")
+    } else {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/volume.svg")
+    }
+    .width(Length::Shrink);
+    let mute_button = button(icon, ButtonVariant::Primary).on_press(wrap(
+        AudioMsg::SetInputStreamMute(input_stream.index, !input_stream.muted),
+    ));
+    let card = Card::new(pick_list, mute_button, slider, current_volume);
+    Some(card.view())
 }
 
 fn output_stream_card_view(
@@ -485,34 +625,35 @@ fn output_stream_card_view(
     .step(2000_u32);
     let sources: Vec<AudioSource> = source_map.clone().into_values().collect();
     let output_stream_clone = output_stream.clone();
-    let pick_list = oxi_picklist::pick_list(sources, Some(current_source.clone()), move |source| {
-        wrap(AudioMsg::SetSourceOfOutputStream(
-            output_stream_clone.clone(),
-            source,
-        ))
-    });
-    Some(
-        column![
-            row![
-                column![
-                    text(output_stream.application_name.clone()),
-                    text(output_stream.name.clone())
-                ]
-                .padding(20),
-                pick_list
-            ]
-            .padding(20),
-            row![
-                button("Mute", ButtonVariant::Primary).on_press(wrap(
-                    AudioMsg::SetOutputStreamMute(output_stream.index, !output_stream.muted)
-                )),
-                slider
-            ]
-            .padding(20)
-        ]
-        .padding(20)
-        .into(),
-    )
+    let pick_list = CustomPickList::new(
+        PickerVariant::ComboPicker(ComboPickerTitle::new(
+            format!(
+                "{}: {}",
+                output_stream.application_name.clone(),
+                output_stream.name.clone()
+            ),
+            Some(current_source.alias.clone()),
+        )),
+        sources,
+        Some(current_source.clone()),
+        move |source| {
+            wrap(AudioMsg::SetSourceOfOutputStream(
+                output_stream_clone.clone(),
+                source,
+            ))
+        },
+    );
+    let icon = if output_stream.muted {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/mic_muted.svg")
+    } else {
+        svg_from_path(SvgStyleVariant::Primary, "./assets/mic.svg")
+    }
+    .width(Length::Shrink);
+    let mute_button = button(icon, ButtonVariant::Primary).on_press(wrap(
+        AudioMsg::SetOutputStreamMute(output_stream.index, !output_stream.muted),
+    ));
+    let card = Card::new(pick_list, mute_button, slider, current_volume);
+    Some(card.view())
 }
 
 fn audio_cards(card: &AudioCard) -> Element<'_, Message> {
@@ -523,15 +664,14 @@ fn audio_cards(card: &AudioCard) -> Element<'_, Message> {
         .into_iter()
         .map(|value| value.name)
         .collect();
-    let pick_list = oxi_picklist::pick_list(
+    CustomPickList::new(
+        PickerVariant::ComboPicker(ComboPickerTitle::new(
+            card.name.clone(),
+            Some(card.active_profile.clone()),
+        )),
         profiles,
         Some(card.active_profile.clone()),
         move |profile| wrap(AudioMsg::SetProfileOfCard(index, profile)),
-    );
-    column!(
-        pick_list,
-        text(card.name.clone()),
-        text(card.active_profile.clone())
     )
     .into()
 }
