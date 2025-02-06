@@ -38,7 +38,7 @@ enum PageId {
 
 enum SenderOrNone {
     None,
-    Sender(Sender<Message>),
+    Sender(Sender<ReSetMessage>),
 }
 
 struct ReSet {
@@ -50,23 +50,23 @@ struct ReSet {
 }
 
 #[derive(Debug, Clone)]
-enum Message {
+enum ReSetMessage {
     SubMsgAudio(AudioMsg),
     SubMsgNetwork(NetworkMsg),
     SetPage(PageId),
     StartWorker(PageId, Arc<Connection>),
-    ReceiveSender(Sender<Message>),
+    ReceiveSender(Sender<ReSetMessage>),
 }
 
-fn some_worker() -> impl Stream<Item = Message> {
+fn some_worker() -> impl Stream<Item = ReSetMessage> {
     stream::channel(100, |mut output| async move {
         let (sender, mut receiver) = mpsc::channel(100);
         // TODO beforepr handle error
-        let _ = output.send(Message::ReceiveSender(sender)).await;
+        let _ = output.send(ReSetMessage::ReceiveSender(sender)).await;
 
         loop {
             let input = receiver.select_next_some().await;
-            if let Message::StartWorker(page_id, conn) = input {
+            if let ReSetMessage::StartWorker(page_id, conn) = input {
                 match page_id {
                     PageId::Audio => watch_audio_dbus_signals(&mut output, conn)
                         .await
@@ -79,7 +79,7 @@ fn some_worker() -> impl Stream<Item = Message> {
 }
 
 impl ReSet {
-    fn subscription(&self) -> Subscription<Message> {
+    fn subscription(&self) -> Subscription<ReSetMessage> {
         Subscription::run(some_worker)
     }
 
@@ -87,7 +87,7 @@ impl ReSet {
         oxiced::theme::get_theme()
     }
 
-    fn new() -> (Self, Task<Message>) {
+    fn new() -> (Self, Task<ReSetMessage>) {
         // TODO beforepr handle error
         let ctx = Arc::new(block_on(Connection::session()).unwrap());
         let audio_context = async || {
@@ -112,45 +112,49 @@ impl ReSet {
         String::from("ReSet")
     }
 
-    fn update(&mut self, message: Message) -> Task<Message> {
+    fn update(&mut self, message: ReSetMessage) -> Task<ReSetMessage> {
         match message {
-            Message::SubMsgAudio(audio_msg) => {
+            ReSetMessage::SubMsgAudio(audio_msg) => {
                 let update_fn = async || self.audio_model.update(audio_msg).await;
                 block_on(update_fn());
                 Task::none()
             }
-            Message::SubMsgNetwork(network_msg) => {
+            ReSetMessage::SubMsgNetwork(network_msg) => {
                 self.network_model.update(network_msg);
                 Task::none()
             }
-            Message::SetPage(page_id) => {
+            ReSetMessage::SetPage(page_id) => {
                 self.current_page = page_id;
-                Task::done(Message::StartWorker(page_id, self.ctx.clone()))
+                Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone()))
             }
-            Message::StartWorker(page_id, connection) => {
+            ReSetMessage::StartWorker(page_id, connection) => {
                 match &mut self.sender {
                     SenderOrNone::None => (),
                     SenderOrNone::Sender(sender) => {
-                        let fun =
-                            async || sender.send(Message::StartWorker(page_id, connection)).await;
+                        let fun = async || {
+                            sender
+                                .send(ReSetMessage::StartWorker(page_id, connection))
+                                .await
+                        };
                         let _ = block_on(fun());
                     }
                 };
                 Task::none()
             }
-            Message::ReceiveSender(sender) => {
+            ReSetMessage::ReceiveSender(sender) => {
                 self.sender = SenderOrNone::Sender(sender);
                 Task::none()
             }
         }
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<ReSetMessage> {
         column!(
             // TODO beforepr set audio and network
-            button("SetAudio", ButtonVariant::Primary).on_press(Message::SetPage(PageId::Audio)),
+            button("SetAudio", ButtonVariant::Primary)
+                .on_press(ReSetMessage::SetPage(PageId::Audio)),
             button("SetNetwork", ButtonVariant::Primary)
-                .on_press(Message::SetPage(PageId::Network)),
+                .on_press(ReSetMessage::SetPage(PageId::Network)),
             // TODO beforepr make a wrapper over everything ->
             // 3 views  -> 1 box without sidebar -> 1 box with sidebar -> 2 boxes with sidebar
             match self.current_page {

@@ -1,6 +1,6 @@
 use iced::{widget::row, Element};
 
-use crate::Message;
+use crate::ReSetMessage;
 
 use super::wireless::{WirelessModel, WirelessMsg};
 
@@ -32,7 +32,7 @@ impl NetworkModel {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<ReSetMessage> {
         println!("display network");
         match self.current_page {
             NetworkPageId::Wireless => self.wireless_model.view(),

@@ -1,11 +1,11 @@
 // taken directly from https://github.com/iced-rs/iced/blob/0.13.1/widget/src/pick_list.rs
 // Awesome toolkit but oh my is this hard
 // Only changed to include variations of this component.
-use std::{borrow::Borrow, rc::Rc};
+use std::borrow::Borrow;
 
 use iced::{
     advanced::{
-        graphics::{core::keyboard, mesh::Renderer},
+        graphics::core::keyboard,
         layout, mouse, overlay, renderer,
         text::{self, paragraph},
         widget::{tree, Tree},
@@ -16,8 +16,7 @@ use iced::{
     overlay::menu::{self, Menu},
     touch,
     widget::pick_list::{Status, Style},
-    Background, Border, Color, Element, Event, Length, Padding, Pixels, Point, Rectangle, Size,
-    Theme, Vector,
+    Element, Event, Length, Padding, Pixels, Point, Rectangle, Size, Theme, Vector,
 };
 
 pub struct ComboPickerTitle {
@@ -429,9 +428,9 @@ where
         tree: &Tree,
         renderer: &mut Renderer,
         theme: &Theme,
-        style: &renderer::Style,
+        _style: &renderer::Style,
         layout: Layout<'_>,
-        cursor: mouse::Cursor,
+        _cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
         let font = self.font.unwrap_or_else(|| renderer.default_font());

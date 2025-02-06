@@ -1,17 +1,27 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use zbus::{proxy, zvariant::Type};
+
+use crate::components::{
+    audio_card::{TCardUser, TStreamCardUser},
+    icons::Icon,
+};
+
+use super::audio_impl::AudioMsg;
 
 pub trait TIndex {
     fn index(&self) -> u32;
 }
 
-trait TAudioDevice {
+pub trait TAudioObject {
     fn name(&self) -> String;
     fn alias(&self) -> String;
     fn channels(&self) -> u16;
+    fn index(&self) -> u32;
     fn volume(&self) -> Vec<u32>;
     fn muted(&self) -> bool;
-    fn active(&self) -> i32;
+    //fn active(&self) -> i32;
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type, PartialEq, Eq)]
@@ -31,7 +41,7 @@ impl TIndex for AudioSink {
     }
 }
 
-impl TAudioDevice for AudioSink {
+impl TAudioObject for AudioSink {
     fn name(&self) -> String {
         self.name.clone()
     }
@@ -52,14 +62,44 @@ impl TAudioDevice for AudioSink {
         self.muted
     }
 
-    fn active(&self) -> i32 {
-        self.active
+    //fn active(&self) -> i32 {
+    //    self.active
+    //}
+
+    fn index(&self) -> u32 {
+        self.index
     }
 }
 
-impl ToString for AudioSink {
-    fn to_string(&self) -> String {
-        self.alias.clone()
+impl TCardUser for AudioSink {
+    fn volume_fn(index: u32, channels: u16, volume: u32) -> AudioMsg {
+        AudioMsg::SetSinkVolume(index, channels, volume)
+    }
+
+    fn mute_fn(index: u32, muted: bool) -> AudioMsg {
+        AudioMsg::SetSinkMute(index, muted)
+    }
+
+    fn default_fn(index: u32) -> AudioMsg {
+        AudioMsg::SetDefaultSink(index)
+    }
+
+    fn muted_icon() -> Icon {
+        Icon::VolumeMuted
+    }
+
+    fn unmuted_icon() -> Icon {
+        Icon::Volume
+    }
+
+    fn title() -> String {
+        "Output".to_string()
+    }
+}
+
+impl Display for AudioSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.alias)
     }
 }
 
@@ -74,9 +114,65 @@ pub struct AudioSource {
     pub active: i32,
 }
 
-impl ToString for AudioSource {
-    fn to_string(&self) -> String {
+impl TAudioObject for AudioSource {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn alias(&self) -> String {
         self.alias.clone()
+    }
+
+    fn channels(&self) -> u16 {
+        self.channels
+    }
+
+    fn volume(&self) -> Vec<u32> {
+        self.volume.clone()
+    }
+
+    fn muted(&self) -> bool {
+        self.muted
+    }
+
+    //fn active(&self) -> i32 {
+    //    self.active
+    //}
+
+    fn index(&self) -> u32 {
+        self.index
+    }
+}
+
+impl TCardUser for AudioSource {
+    fn volume_fn(index: u32, channels: u16, volume: u32) -> AudioMsg {
+        AudioMsg::SetSourceVolume(index, channels, volume)
+    }
+
+    fn mute_fn(index: u32, muted: bool) -> AudioMsg {
+        AudioMsg::SetSourceMute(index, muted)
+    }
+
+    fn default_fn(index: u32) -> AudioMsg {
+        AudioMsg::SetDefaultSource(index)
+    }
+
+    fn muted_icon() -> Icon {
+        Icon::MicMuted
+    }
+
+    fn unmuted_icon() -> Icon {
+        Icon::Mic
+    }
+
+    fn title() -> String {
+        "Input".to_string()
+    }
+}
+
+impl Display for AudioSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.alias)
     }
 }
 
@@ -86,7 +182,7 @@ impl TIndex for AudioSource {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, Type, PartialEq, PartialOrd)]
 pub struct InputStream {
     pub index: u32,
     pub name: String,
@@ -98,13 +194,69 @@ pub struct InputStream {
     pub corked: bool,
 }
 
+impl TStreamCardUser<AudioSink> for InputStream {
+    fn volume_fn(index: u32, channels: u16, volume: u32) -> AudioMsg {
+        AudioMsg::SetInputStreamVolume(index, channels, volume)
+    }
+
+    fn mute_fn(index: u32, muted: bool) -> AudioMsg {
+        AudioMsg::SetInputStreamMute(index, muted)
+    }
+
+    fn default_fn(self, sink: AudioSink) -> AudioMsg {
+        AudioMsg::SetSinkOfInputStream(self, sink)
+    }
+
+    fn muted_icon() -> Icon {
+        Icon::VolumeMuted
+    }
+
+    fn unmuted_icon() -> Icon {
+        Icon::Volume
+    }
+
+    fn title() -> String {
+        "Output".to_string()
+    }
+
+    fn obj_index(&self) -> u32 {
+        self.sink_index
+    }
+}
+
+impl TAudioObject for InputStream {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn alias(&self) -> String {
+        self.application_name.clone()
+    }
+
+    fn channels(&self) -> u16 {
+        self.channels
+    }
+
+    fn volume(&self) -> Vec<u32> {
+        self.volume.clone()
+    }
+
+    fn muted(&self) -> bool {
+        self.muted
+    }
+
+    fn index(&self) -> u32 {
+        self.index
+    }
+}
+
 impl TIndex for InputStream {
     fn index(&self) -> u32 {
         self.index
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, Type, PartialEq, PartialOrd)]
 pub struct OutputStream {
     pub index: u32,
     pub name: String,
@@ -114,6 +266,62 @@ pub struct OutputStream {
     pub volume: Vec<u32>,
     pub muted: bool,
     pub corked: bool,
+}
+
+impl TStreamCardUser<AudioSource> for OutputStream {
+    fn volume_fn(index: u32, channels: u16, volume: u32) -> AudioMsg {
+        AudioMsg::SetOutputStreamVolume(index, channels, volume)
+    }
+
+    fn mute_fn(index: u32, muted: bool) -> AudioMsg {
+        AudioMsg::SetOutputStreamMute(index, muted)
+    }
+
+    fn default_fn(self, sink: AudioSource) -> AudioMsg {
+        AudioMsg::SetSourceOfOutputStream(self, sink)
+    }
+
+    fn muted_icon() -> Icon {
+        Icon::MicMuted
+    }
+
+    fn unmuted_icon() -> Icon {
+        Icon::Mic
+    }
+
+    fn title() -> String {
+        "Input".to_string()
+    }
+
+    fn obj_index(&self) -> u32 {
+        self.source_index
+    }
+}
+
+impl TAudioObject for OutputStream {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn alias(&self) -> String {
+        self.application_name.clone()
+    }
+
+    fn channels(&self) -> u16 {
+        self.channels
+    }
+
+    fn volume(&self) -> Vec<u32> {
+        self.volume.clone()
+    }
+
+    fn muted(&self) -> bool {
+        self.muted
+    }
+
+    fn index(&self) -> u32 {
+        self.index
+    }
 }
 
 impl TIndex for OutputStream {
