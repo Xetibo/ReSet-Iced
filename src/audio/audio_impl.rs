@@ -10,7 +10,9 @@ use zbus::{Connection, Proxy};
 
 use crate::{
     components::{
-        audio_card::{card_from_audio_object, device_card_view, stream_card_view},
+        audio_card::{
+            card_from_audio_object, device_card_view, populate_audio_cards, stream_card_view,
+        },
         comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
     },
     utils::ignore,
@@ -287,36 +289,8 @@ impl AudioModel<'_> {
             }
             col.into()
         };
-        let output: Element<ReSetMessage> = {
-            let sink_card = card_from_audio_object(self.default_sink, &self.sinks).view();
-            let input_streams_cards: Vec<Element<ReSetMessage>> = self
-                .input_streams
-                .values()
-                .filter_map(|value| {
-                    stream_card_view::<InputStream, AudioSink>(value.clone(), &self.sinks)
-                })
-                .collect();
-            let mut col = column![];
-            col = col.push(sink_card);
-            col = col.push(iced::widget::Space::with_height(10));
-            col = col.push(iced::widget::Rule::horizontal(2));
-            col = col.push(iced::widget::Space::with_height(10));
-            let stream_count = if input_streams_cards.is_empty() {
-                0
-            } else {
-                input_streams_cards.len() - 1
-            };
-            for (i, elem) in input_streams_cards.into_iter().enumerate() {
-                col = col.push(elem);
-                if i != stream_count {
-                    col = col.push(iced::widget::Rule::horizontal(2));
-                }
-            }
-            column!(text("Output").size(30), col.spacing(20))
-                .padding(20)
-                .spacing(20)
-                .into()
-        };
+        let output: Element<ReSetMessage> =
+            populate_audio_cards(self.default_sink, &self.sinks, &self.input_streams);
         let input = {
             let source_card = card_from_audio_object(self.default_source, &self.sources).view();
             let output_stream_cards: Vec<Element<ReSetMessage>> = self

@@ -111,6 +111,43 @@ where
     }
 }
 
+pub fn populate_audio_cards<'a, OBJ, STREAM>(
+    index: u32,
+    object_map: &'a HashMap<u32, OBJ>,
+    stream_map: &'a HashMap<u32, STREAM>,
+) -> Element<'a, ReSetMessage>
+where
+    OBJ: TAudioObject + TCardUser + std::fmt::Display + Clone + PartialEq + 'a,
+    STREAM: TAudioObject + TStreamCardUser<OBJ> + Clone + PartialEq + 'a,
+{
+    let object = card_from_audio_object::<OBJ>(index, object_map).view();
+    let stream_cards: Vec<Element<ReSetMessage>> = stream_map
+        .values()
+        .filter_map(|value| stream_card_view::<STREAM, OBJ>(value.clone(), object_map))
+        .collect();
+    let mut col = column!(
+        object,
+        iced::widget::Space::with_height(10),
+        iced::widget::Rule::horizontal(2),
+        iced::widget::Space::with_height(10),
+    );
+    let stream_count = if stream_cards.is_empty() {
+        0
+    } else {
+        stream_cards.len() - 1
+    };
+    for (i, elem) in stream_cards.into_iter().enumerate() {
+        col = col.push(elem);
+        if i != stream_count {
+            col = col.push(iced::widget::Rule::horizontal(2));
+        }
+    }
+    column!(text(OBJ::title()).size(30), col.spacing(20))
+        .padding(20)
+        .spacing(20)
+        .into()
+}
+
 fn get_volume_level(volume: &[u32]) -> u32 {
     // TODO beforepr does this always exist?
     *volume.first().unwrap()

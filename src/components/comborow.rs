@@ -517,7 +517,12 @@ where
 
         let label = selected.map(ToString::to_string);
 
-        let mut draw_text = |text: String, alignment: Vertical| {
+        enum TextVariant {
+            Strong,
+            Weak,
+        }
+
+        let mut draw_text = |text: String, alignment: Vertical, variant: TextVariant| {
             let text_size = self.text_size.unwrap_or_else(|| renderer.default_size());
             renderer.fill_text(
                 Text {
@@ -536,7 +541,10 @@ where
                 },
                 Point::new(bounds.x + self.padding.left, bounds.center_y()),
                 if selected.is_some() {
-                    style.text_color
+                    match variant {
+                        TextVariant::Strong => style.text_color,
+                        TextVariant::Weak => style.placeholder_color,
+                    }
                 } else {
                     style.placeholder_color
                 },
@@ -546,17 +554,20 @@ where
         match &self.variant {
             PickerVariant::RegularPicker => {
                 if let Some(label) = label.or_else(|| self.placeholder.clone()) {
-                    draw_text(label, alignment::Vertical::Center);
+                    draw_text(label, alignment::Vertical::Center, TextVariant::Strong);
                 }
             }
             PickerVariant::ComboPicker(combo_title) => {
                 // TODO beforepr why is the wrong title at the top when the title is
                 // vertical::top????
-                draw_text(combo_title.title.clone(), alignment::Vertical::Bottom);
-                combo_title
-                    .subtitle
-                    .iter()
-                    .for_each(|text| draw_text(text.clone(), alignment::Vertical::Top));
+                draw_text(
+                    combo_title.title.clone(),
+                    alignment::Vertical::Bottom,
+                    TextVariant::Strong,
+                );
+                combo_title.subtitle.iter().for_each(|text| {
+                    draw_text(text.clone(), alignment::Vertical::Top, TextVariant::Weak)
+                });
             }
         }
     }
