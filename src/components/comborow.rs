@@ -12,7 +12,7 @@ use iced::{
         Clipboard, Layout, Shell, Text, Widget,
     },
     alignment::{self, Vertical},
-    event,
+    color, event,
     overlay::menu::{self, Menu},
     touch,
     widget::pick_list::{Status, Style},
@@ -510,7 +510,9 @@ where
                     bounds.x + bounds.width - self.padding.right,
                     bounds.center_y(),
                 ),
-                style.handle_color,
+                color!(0xCDD6F4),
+                // TODO beforepr should be the correct color out of the box
+                //style.handle_color,
                 *viewport,
             );
         }
@@ -543,7 +545,9 @@ where
                 if selected.is_some() {
                     match variant {
                         TextVariant::Strong => style.text_color,
-                        TextVariant::Weak => style.placeholder_color,
+                        TextVariant::Weak => color!(0x7C8097),
+                        // TODO beforepr this should automatically have the correct color
+                        //style.placeholder_color,
                     }
                 } else {
                     style.placeholder_color

@@ -64,6 +64,7 @@ rustPlatform.buildRustPackage rec {
     outputHashes = {
       "re_set-lib-5.2.5" = "";
       "reset_daemon-2.2.0" = "";
+      "oxiced-0.1.0" = "";
     };
   };
 
