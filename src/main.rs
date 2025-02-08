@@ -3,7 +3,8 @@ use std::{
     time::Duration,
 };
 
-use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg};
+use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg, AudioVariant};
+use components::sidebar::{sidebar, EntryButton, EntryButtonLevel, EntryCategory};
 use dbus_interface::ReSetDbusProxy;
 use iced::{
     futures::{
@@ -12,8 +13,9 @@ use iced::{
         SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::column,
-    Element, Subscription, Task, Theme,
+    widget::{column, row},
+    window::Settings,
+    Element, Size, Subscription, Task, Theme,
 };
 use network::network::{NetworkModel, NetworkMsg};
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
@@ -125,7 +127,16 @@ impl ReSet {
             }
             ReSetMessage::SetPage(page_id) => {
                 self.current_page = page_id;
-                Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone()))
+                let tasks = vec![
+                    match page_id {
+                        PageId::Audio => Task::done(ReSetMessage::SubMsgAudio(
+                            AudioMsg::SetAudioVariant(AudioVariant::InputAndOutput),
+                        )),
+                        PageId::Network => Task::none(),
+                    },
+                    Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone())),
+                ];
+                Task::batch(tasks.into_iter())
             }
             ReSetMessage::StartWorker(page_id, connection) => {
                 match &mut self.sender {
@@ -149,12 +160,53 @@ impl ReSet {
     }
 
     fn view(&self) -> Element<ReSetMessage> {
-        column!(
+        let entries = {
+            let audio_sub = vec![
+                EntryButton {
+                    title: "Input",
+                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Input)),
+                    level: EntryButtonLevel::SubLevel,
+                },
+                EntryButton {
+                    title: "Output",
+                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Output)),
+                    level: EntryButtonLevel::SubLevel,
+                },
+                EntryButton {
+                    title: "Cards",
+                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Cards)),
+                    level: EntryButtonLevel::SubLevel,
+                },
+                EntryButton {
+                    title: "Devices",
+                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
+                        AudioVariant::Devices,
+                    )),
+                    level: EntryButtonLevel::SubLevel,
+                },
+            ];
+            let base_audio = EntryButton {
+                title: "Audio",
+                msg: ReSetMessage::SetPage(PageId::Audio),
+                level: EntryButtonLevel::TopLevel,
+            };
+            let audio = EntryCategory {
+                main_entry: base_audio,
+                sub_entries: audio_sub,
+            };
+            let network = EntryCategory {
+                main_entry: EntryButton {
+                    title: "Network",
+                    msg: ReSetMessage::SetPage(PageId::Network),
+                    level: EntryButtonLevel::TopLevel,
+                },
+                sub_entries: Vec::new(),
+            };
+            vec![audio, network]
+        };
+        row!(
             // TODO beforepr set audio and network
-            button("SetAudio", ButtonVariant::Primary)
-                .on_press(ReSetMessage::SetPage(PageId::Audio)),
-            button("SetNetwork", ButtonVariant::Primary)
-                .on_press(ReSetMessage::SetPage(PageId::Network)),
+            sidebar(entries),
             // TODO beforepr make a wrapper over everything ->
             // 3 views  -> 1 box without sidebar -> 1 box with sidebar -> 2 boxes with sidebar
             match self.current_page {
@@ -197,8 +249,41 @@ pub async fn main() -> Result<(), iced::Error> {
         LOG!("Using Bundled Daemon")
     }
 
+    let window_settings = Settings {
+        size: Size::default(),
+        position: iced::window::Position::Default,
+        min_size: None,
+        max_size: None,
+        visible: true,
+        resizable: true,
+        decorations: true, // TODO beforepr
+        transparent: false,
+        level: iced::window::Level::Normal,
+        icon: None, // TODO beforepr add reset item
+        platform_specific: iced::window::settings::PlatformSpecific {
+            application_id: "ReSet-Iced".into(),
+            override_redirect: false,
+        },
+        exit_on_close_request: true,
+    };
+
+    println!("{}", testeroni(&20, &30));
+
     iced::application(ReSet::title, ReSet::update, ReSet::view)
+        .window(window_settings)
         .theme(ReSet::theme)
         .subscription(ReSet::subscription)
         .run_with(ReSet::new)
+}
+
+fn testeroni<'a, 'b>(ping: &'a u32, pang: &'b u32) -> &'b u32
+where
+    'a: 'b,
+{
+    // logic
+    if *ping > 10 {
+        pang
+    } else {
+        ping
+    }
 }

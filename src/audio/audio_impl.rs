@@ -336,25 +336,7 @@ impl AudioModel<'_> {
             AudioVariant::Devices => devices,
         };
         // Make an enum to buttons function
-        column![
-            row![
-                button("Both", ButtonVariant::Primary).on_press(wrap(AudioMsg::SetAudioVariant(
-                    AudioVariant::InputAndOutput
-                ))),
-                button("Input", ButtonVariant::Primary)
-                    .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Input))),
-                button("Output", ButtonVariant::Primary)
-                    .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Output))),
-                button("Cards", ButtonVariant::Primary)
-                    .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Cards))),
-                button("DeviceCards", ButtonVariant::Primary)
-                    .on_press(wrap(AudioMsg::SetAudioVariant(AudioVariant::Devices))),
-            ]
-            .padding(20),
-            base
-        ]
-        .padding(20)
-        .into()
+        column![base].padding(20).into()
     }
 }
 

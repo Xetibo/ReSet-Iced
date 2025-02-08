@@ -2,7 +2,7 @@ use iced::{
     alignment::{Horizontal, Vertical},
     border,
     widget::{column, container::Style, row, text, Button, Radio, Slider},
-    Element, Theme,
+    Element, Length, Theme,
 };
 
 pub struct AudioDeviceCard<'a, C, Message> {
@@ -44,7 +44,7 @@ where
     pub fn view(self) -> Element<'a, Message> {
         iced::widget::container(
             column!(
-                row!(text(self.name), self.radio)
+                row!(text(self.name).width(Length::Fill), self.radio)
                     .padding(20)
                     .align_y(Vertical::Center),
                 row!(self.mute_button, self.slider)
