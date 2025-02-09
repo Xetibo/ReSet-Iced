@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=ReSet
+GenericName=SettingsApplication
+GenericName[de]=SettingsApplikation
+Exec=ReSet
+Terminal=false
+Type=Application
+Keywords=settings;iced;
+Icon=ReSet
+Categories=Utility;Iced;
+StartupNotify=false

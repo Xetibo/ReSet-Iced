@@ -107,6 +107,12 @@ rustPlatform.buildRustPackage rec {
       patchelf --set-rpath "${libPath}" "$out/bin/reset"
     '';
 
+  postInstall = ''
+        # TODO beforepr add all regular icons as well
+    	install -D --mode=444 $src/${pname}.desktop $out/share/applications/${pname}.desktop
+    	install -D --mode=444 $src/src/resources/icons/${pname}.svg $out/share/pixmaps/${pname}.svg
+  '';
+
   meta = with lib; {
     description = "A settings manager for Linux";
     homepage = "https://github.com/Xetibo/ReSet-Iced";
