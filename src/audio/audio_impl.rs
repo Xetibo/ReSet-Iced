@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 use iced::{
     futures::{channel::mpsc::Sender, SinkExt, StreamExt},
     widget::{column, row, text},
-    Element,
+    Element, Task,
 };
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
 use zbus::{Connection, Proxy};
@@ -165,9 +165,12 @@ impl AudioModel<'_> {
         })
     }
 
-    pub async fn update(&mut self, msg: AudioMsg) -> Option<()> {
-        match msg {
-            AudioMsg::SetAudioVariant(audio_variant) => self.audio_variant = audio_variant,
+    pub async fn update(&mut self, msg: AudioMsg) -> Option<Task<ReSetMessage>> {
+        let cmd = match msg {
+            AudioMsg::SetAudioVariant(audio_variant) => {
+                self.audio_variant = audio_variant;
+                Task::done(ReSetMessage::SetPage(crate::PageId::Audio))
+            }
             AudioMsg::SetSinkVolume(index, channels, volume) => {
                 let current_sink = self.sinks.get_mut(&index)?;
                 set_volume(&mut current_sink.volume, volume);
@@ -175,18 +178,27 @@ impl AudioModel<'_> {
                     self.audio_proxy
                         .set_sink_volume(index, channels, volume)
                         .await,
-                )
+                );
+                Task::none()
             }
             AudioMsg::SetSinkMute(index, muted) => {
                 // TODO beforepr handle unwrap
                 self.sinks.get_mut(&index)?.muted = muted;
-                ignore(self.audio_proxy.set_sink_mute(index, muted).await)
+                ignore(self.audio_proxy.set_sink_mute(index, muted).await);
+                Task::none()
             }
-            AudioMsg::AddSink(sink) => ignore(self.sinks.insert(sink.index, sink)),
-            AudioMsg::RemoveSink(index) => ignore(self.sinks.remove(&index)),
+            AudioMsg::AddSink(sink) => {
+                ignore(self.sinks.insert(sink.index, sink));
+                Task::none()
+            }
+            AudioMsg::RemoveSink(index) => {
+                ignore(self.sinks.remove(&index));
+                Task::none()
+            }
             AudioMsg::SetInputStreamMute(index, muted) => {
                 self.input_streams.get_mut(&index)?.muted = muted;
-                ignore(self.audio_proxy.set_input_stream_mute(index, muted).await)
+                ignore(self.audio_proxy.set_input_stream_mute(index, muted).await);
+                Task::none()
             }
             AudioMsg::SetInputStreamVolume(index, channels, volume) => {
                 let current_input_stream = self.input_streams.get_mut(&index)?;
@@ -195,7 +207,8 @@ impl AudioModel<'_> {
                     self.audio_proxy
                         .set_input_stream_volume(index, channels, volume)
                         .await,
-                )
+                );
+                Task::none()
             }
             AudioMsg::SetSinkOfInputStream(input_stream, sink) => {
                 self.input_streams.get_mut(&input_stream.index)?.sink_index = sink.index;
@@ -203,12 +216,17 @@ impl AudioModel<'_> {
                     self.audio_proxy
                         .set_sink_of_input_stream(input_stream, sink)
                         .await,
-                )
+                );
+                Task::none()
             }
             AudioMsg::AddInputStream(input_stream) => {
-                ignore(self.input_streams.insert(input_stream.index, input_stream))
+                ignore(self.input_streams.insert(input_stream.index, input_stream));
+                Task::none()
             }
-            AudioMsg::RemoveInputStream(index) => ignore(self.input_streams.remove(&index)),
+            AudioMsg::RemoveInputStream(index) => {
+                ignore(self.input_streams.remove(&index));
+                Task::none()
+            }
             AudioMsg::SetSourceVolume(index, channels, volume) => {
                 let current_source = self.sinks.get_mut(&index)?;
                 set_volume(&mut current_source.volume, volume);
@@ -216,17 +234,26 @@ impl AudioModel<'_> {
                     self.audio_proxy
                         .set_source_volume(index, channels, volume)
                         .await,
-                )
+                );
+                Task::none()
             }
             AudioMsg::SetSourceMute(index, muted) => {
                 self.sources.get_mut(&index)?.muted = muted;
-                ignore(self.audio_proxy.set_source_mute(index, muted).await)
+                ignore(self.audio_proxy.set_source_mute(index, muted).await);
+                Task::none()
             }
-            AudioMsg::AddSource(source) => ignore(self.sources.insert(source.index, source)),
-            AudioMsg::RemoveSource(index) => ignore(self.sources.remove(&index)),
+            AudioMsg::AddSource(source) => {
+                ignore(self.sources.insert(source.index, source));
+                Task::none()
+            }
+            AudioMsg::RemoveSource(index) => {
+                ignore(self.sources.remove(&index));
+                Task::none()
+            }
             AudioMsg::SetOutputStreamMute(index, muted) => {
                 self.output_streams.get_mut(&index)?.muted = muted;
-                ignore(self.audio_proxy.set_output_stream_mute(index, muted).await)
+                ignore(self.audio_proxy.set_output_stream_mute(index, muted).await);
+                Task::none()
             }
             AudioMsg::SetOutputStreamVolume(index, channels, volume) => {
                 let current_output_stream = self.output_streams.get_mut(&index)?;
@@ -235,7 +262,8 @@ impl AudioModel<'_> {
                     self.audio_proxy
                         .set_output_stream_volume(index, channels, volume)
                         .await,
-                )
+                );
+                Task::none()
             }
             AudioMsg::SetSourceOfOutputStream(output_stream, source) => {
                 self.output_streams
@@ -245,18 +273,26 @@ impl AudioModel<'_> {
                     self.audio_proxy
                         .set_source_of_output_stream(output_stream, source)
                         .await,
-                )
+                );
+                Task::none()
             }
-            AudioMsg::AddOutputStream(output_stream) => ignore(
-                self.output_streams
-                    .insert(output_stream.index, output_stream),
-            ),
-            AudioMsg::RemoveOutputStream(index) => ignore(self.output_streams.remove(&index)),
+            AudioMsg::AddOutputStream(output_stream) => {
+                ignore(
+                    self.output_streams
+                        .insert(output_stream.index, output_stream),
+                );
+                Task::none()
+            }
+            AudioMsg::RemoveOutputStream(index) => {
+                ignore(self.output_streams.remove(&index));
+                Task::none()
+            }
             // TODO beforepr handle these properly when sink or source changes
             AudioMsg::SetDefaultSink(index) => {
                 self.default_sink = index;
                 let sink = self.sinks.get(&index)?;
-                ignore(self.audio_proxy.set_default_sink(sink.name.clone()).await)
+                ignore(self.audio_proxy.set_default_sink(sink.name.clone()).await);
+                Task::none()
             }
             AudioMsg::SetDefaultSource(index) => {
                 self.default_source = index;
@@ -266,6 +302,7 @@ impl AudioModel<'_> {
                         .set_default_source(source.name.clone())
                         .await,
                 );
+                Task::none()
             }
             AudioMsg::SetProfileOfCard(index, profile) => {
                 self.cards.get_mut(&index)?.active_profile = profile.clone();
@@ -273,10 +310,11 @@ impl AudioModel<'_> {
                     self.audio_proxy
                         .set_card_profile_of_device(index, profile)
                         .await,
-                )
+                );
+                Task::none()
             }
-        }
-        Some(())
+        };
+        Some(cmd)
     }
 
     pub fn view(&self) -> Element<ReSetMessage> {

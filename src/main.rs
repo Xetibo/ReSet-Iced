@@ -13,7 +13,7 @@ use iced::{
         SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::{column, row},
+    widget::{column, row, scrollable},
     window::Settings,
     Element, Size, Subscription, Task, Theme,
 };
@@ -118,8 +118,12 @@ impl ReSet {
         match message {
             ReSetMessage::SubMsgAudio(audio_msg) => {
                 let update_fn = async || self.audio_model.update(audio_msg).await;
-                block_on(update_fn());
-                Task::none()
+                let output = block_on(update_fn());
+                if let Some(task) = output {
+                    task
+                } else {
+                    Task::none()
+                }
             }
             ReSetMessage::SubMsgNetwork(network_msg) => {
                 self.network_model.update(network_msg);
@@ -127,16 +131,7 @@ impl ReSet {
             }
             ReSetMessage::SetPage(page_id) => {
                 self.current_page = page_id;
-                let tasks = vec![
-                    match page_id {
-                        PageId::Audio => Task::done(ReSetMessage::SubMsgAudio(
-                            AudioMsg::SetAudioVariant(AudioVariant::InputAndOutput),
-                        )),
-                        PageId::Network => Task::none(),
-                    },
-                    Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone())),
-                ];
-                Task::batch(tasks.into_iter())
+                Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone()))
             }
             ReSetMessage::StartWorker(page_id, connection) => {
                 match &mut self.sender {
@@ -209,10 +204,10 @@ impl ReSet {
             sidebar(entries),
             // TODO beforepr make a wrapper over everything ->
             // 3 views  -> 1 box without sidebar -> 1 box with sidebar -> 2 boxes with sidebar
-            match self.current_page {
+            scrollable(match self.current_page {
                 PageId::Audio => self.audio_model.view(),
                 PageId::Network => self.network_model.view(),
-            },
+            }),
         )
         .into()
     }
@@ -267,23 +262,9 @@ pub async fn main() -> Result<(), iced::Error> {
         exit_on_close_request: true,
     };
 
-    println!("{}", testeroni(&20, &30));
-
     iced::application(ReSet::title, ReSet::update, ReSet::view)
         .window(window_settings)
         .theme(ReSet::theme)
         .subscription(ReSet::subscription)
         .run_with(ReSet::new)
-}
-
-fn testeroni<'a, 'b>(ping: &'a u32, pang: &'b u32) -> &'b u32
-where
-    'a: 'b,
-{
-    // logic
-    if *ping > 10 {
-        pang
-    } else {
-        ping
-    }
 }

@@ -51,6 +51,7 @@ fn create_category<'a>(category: EntryCategory) -> Vec<Element<'a, ReSetMessage>
         .map(create_button)
         .collect();
     sub_buttons.insert(0, create_button(category.main_entry));
+    sub_buttons.push(iced::widget::Rule::horizontal(2).into());
     sub_buttons
 }
 
@@ -64,7 +65,7 @@ pub fn sidebar<'a>(entries: Vec<EntryCategory>) -> Element<'a, ReSetMessage> {
         entries.into_iter().map(create_category).flatten().collect();
     let col = iced::widget::Column::with_children(category_buttons)
         .padding(10)
-        .spacing(10);
+        .spacing(5);
     container(col)
         .style(container::bordered_box)
         .width(Length::Fixed(200.0))
