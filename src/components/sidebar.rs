@@ -27,7 +27,7 @@ pub struct EntryCategory {
 
 fn create_button<'a>(entry: EntryButton) -> Element<'a, ReSetMessage> {
     match entry.level {
-        EntryButtonLevel::TopLevel => button(entry.title, ButtonVariant::Primary)
+        EntryButtonLevel::TopLevel => button(entry.title, ButtonVariant::LeftMenuEntry)
             .on_press(entry.msg)
             .width(Length::Fill)
             .into(),
@@ -36,7 +36,7 @@ fn create_button<'a>(entry: EntryButton) -> Element<'a, ReSetMessage> {
                 .align_x(Alignment::Center)
                 .center()
                 .width(Length::Fill);
-            button(mid_text, ButtonVariant::Primary)
+            button(mid_text, ButtonVariant::LeftMenuEntry)
                 .on_press(entry.msg)
                 .width(Length::Fill)
                 .into()

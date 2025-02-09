@@ -2947,7 +2947,7 @@ dependencies = [
 [[package]]
 name = "oxiced"
 version = "0.1.0"
-source = "git+https://github.com/Xetibo/oxiced?branch=dashie#18b1c06dd5efaaf8e685938589605cadfcb08334"
+source = "git+https://github.com/Xetibo/oxiced?branch=dashie#c240fb925b8d614622ed391f19bcb7c851b02942"
 dependencies = [
  "arboard",
  "iced",
