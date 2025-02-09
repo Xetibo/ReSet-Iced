@@ -4,7 +4,10 @@ use std::{
 };
 
 use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg, AudioVariant};
-use components::sidebar::{sidebar, EntryButton, EntryButtonLevel, EntryCategory};
+use components::{
+    icons::Icon,
+    sidebar::{sidebar, EntryButton, EntryButtonLevel, EntryCategory},
+};
 use dbus_interface::ReSetDbusProxy;
 use iced::{
     futures::{
@@ -13,12 +16,11 @@ use iced::{
         SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::{column, row, scrollable},
+    widget::{column, row, scrollable, text},
     window::Settings,
-    Element, Size, Subscription, Task, Theme,
+    Element, Font, Size, Subscription, Task, Theme,
 };
 use network::network::{NetworkModel, NetworkMsg};
-use oxiced::widgets::oxi_button::{button, ButtonVariant};
 use re_set_lib::write_log_to_file;
 use re_set_lib::LOG;
 use reset_daemon::run_daemon;
@@ -36,6 +38,7 @@ enum PageId {
     #[default]
     Audio,
     Network,
+    Bluetooth,
 }
 
 enum SenderOrNone {
@@ -74,6 +77,7 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
                         .await
                         .expect("audio watcher failed"), // TODO beforepr
                     PageId::Network => (),
+                    PageId::Bluetooth => (),
                 }
             }
         }
@@ -159,21 +163,25 @@ impl ReSet {
             let audio_sub = vec![
                 EntryButton {
                     title: "Input",
+                    icon: Some(Icon::Mic),
                     msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Input)),
                     level: EntryButtonLevel::SubLevel,
                 },
                 EntryButton {
                     title: "Output",
+                    icon: Some(Icon::Volume),
                     msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Output)),
                     level: EntryButtonLevel::SubLevel,
                 },
                 EntryButton {
                     title: "Cards",
+                    icon: Some(Icon::AudioCards),
                     msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Cards)),
                     level: EntryButtonLevel::SubLevel,
                 },
                 EntryButton {
                     title: "Devices",
+                    icon: Some(Icon::AudioDevices),
                     msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
                         AudioVariant::Devices,
                     )),
@@ -182,7 +190,10 @@ impl ReSet {
             ];
             let base_audio = EntryButton {
                 title: "Audio",
-                msg: ReSetMessage::SetPage(PageId::Audio),
+                icon: Some(Icon::Audio),
+                msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
+                    AudioVariant::InputAndOutput,
+                )),
                 level: EntryButtonLevel::TopLevel,
             };
             let audio = EntryCategory {
@@ -192,12 +203,22 @@ impl ReSet {
             let network = EntryCategory {
                 main_entry: EntryButton {
                     title: "Network",
+                    icon: Some(Icon::Wifi),
                     msg: ReSetMessage::SetPage(PageId::Network),
                     level: EntryButtonLevel::TopLevel,
                 },
                 sub_entries: Vec::new(),
             };
-            vec![audio, network]
+            let bluetooth = EntryCategory {
+                main_entry: EntryButton {
+                    title: "Bluetooth",
+                    icon: Some(Icon::Bluetooth),
+                    msg: ReSetMessage::SetPage(PageId::Bluetooth),
+                    level: EntryButtonLevel::TopLevel,
+                },
+                sub_entries: Vec::new(),
+            };
+            vec![audio, network, bluetooth]
         };
         row!(
             // TODO beforepr set audio and network
@@ -205,8 +226,12 @@ impl ReSet {
             // TODO beforepr make a wrapper over everything ->
             // 3 views  -> 1 box without sidebar -> 1 box with sidebar -> 2 boxes with sidebar
             scrollable(match self.current_page {
-                PageId::Audio => self.audio_model.view(),
+                PageId::Audio => self
+                    .audio_model
+                    .view()
+                    .unwrap_or(column!(text("le error has happened")).into()),
                 PageId::Network => self.network_model.view(),
+                PageId::Bluetooth => row!(text("TODO")).into(),
             }),
         )
         .into()
@@ -265,6 +290,7 @@ pub async fn main() -> Result<(), iced::Error> {
     iced::application(ReSet::title, ReSet::update, ReSet::view)
         .window(window_settings)
         .theme(ReSet::theme)
+        .default_font(Font::with_name("Adwaita Sans"))
         .subscription(ReSet::subscription)
         .run_with(ReSet::new)
 }

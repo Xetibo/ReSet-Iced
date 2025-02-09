@@ -387,6 +387,13 @@ pub trait AudioDbus {
     #[zbus(signal)]
     fn output_stream_removed(&self, index: u32) -> zbus::Result<()>;
 
+    #[zbus(signal)]
+    fn card_changed(&self, card: AudioCard) -> zbus::Result<()>;
+    #[zbus(signal)]
+    fn card_added(&self, card: AudioCard) -> zbus::Result<()>;
+    #[zbus(signal)]
+    fn card_removed(&self, index: u32) -> zbus::Result<()>;
+
     fn list_sinks(&self) -> zbus::Result<Vec<AudioSink>>;
     fn get_default_sink(&self) -> zbus::Result<AudioSink>;
     fn get_default_sink_name(&self) -> zbus::Result<String>;

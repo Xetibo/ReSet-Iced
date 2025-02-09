@@ -3,6 +3,8 @@
 // Only changed to include variations of this component.
 use std::borrow::Borrow;
 
+// TODO beforepr there is an issue with overlapping borders as of now
+
 use iced::{
     advanced::{
         graphics::core::keyboard,

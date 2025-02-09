@@ -21,6 +21,7 @@ use super::{
     audio_device_card::AudioDeviceCard,
     comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
     icons::{icon_widget, Icon},
+    radio::reset_radio,
 };
 
 pub trait TCardUser {
@@ -115,12 +116,12 @@ pub fn populate_audio_cards<'a, OBJ, STREAM>(
     index: u32,
     object_map: &'a HashMap<u32, OBJ>,
     stream_map: &'a HashMap<u32, STREAM>,
-) -> Element<'a, ReSetMessage>
+) -> Option<Element<'a, ReSetMessage>>
 where
     OBJ: TAudioObject + TCardUser + std::fmt::Display + Clone + PartialEq + 'a,
     STREAM: TAudioObject + TStreamCardUser<OBJ> + Clone + PartialEq + 'a,
 {
-    let object = card_from_audio_object::<OBJ>(index, object_map).view();
+    let object = card_from_audio_object::<OBJ>(index, object_map)?.view();
     let stream_cards: Vec<Element<ReSetMessage>> = stream_map
         .values()
         .filter_map(|value| stream_card_view::<STREAM, OBJ>(value.clone(), object_map))
@@ -142,10 +143,12 @@ where
             col = col.push(iced::widget::Rule::horizontal(2));
         }
     }
-    column!(text(OBJ::title()).size(30), col.spacing(20))
-        .padding(20)
-        .spacing(20)
-        .into()
+    Some(
+        column!(text(OBJ::title()).size(30), col.spacing(20))
+            .padding(20)
+            .spacing(20)
+            .into(),
+    )
 }
 
 fn get_volume_level(volume: &[u32]) -> u32 {
@@ -160,12 +163,12 @@ fn wrap(audio_msg: AudioMsg) -> ReSetMessage {
 pub fn card_from_audio_object<T>(
     index: u32,
     object_map: &HashMap<u32, T>,
-) -> Card<'_, T, T, Vec<T>, ReSetMessage>
+) -> Option<Card<'_, T, T, Vec<T>, ReSetMessage>>
 where
     T: Clone + ToString + PartialEq,
     T: TAudioObject + TCardUser,
 {
-    let object = object_map.get(&index).unwrap().clone();
+    let object = object_map.get(&index)?.clone();
 
     let current_volume = get_volume_level(&object.volume());
     let channels = object.channels();
@@ -193,7 +196,7 @@ where
     let mute_button =
         button(icon, ButtonVariant::Primary).on_press(wrap(T::mute_fn(index, !object.muted())));
 
-    Card::new(pick_list, mute_button, slider, current_volume)
+    Some(Card::new(pick_list, mute_button, slider, current_volume))
 }
 
 pub fn device_card_view<T>(
@@ -207,7 +210,7 @@ where
     let objects: Vec<T> = object_map.clone().into_values().collect();
 
     let create_card = |object: T| {
-        let radio = radio("", object.index(), Some(default_index), |index| {
+        let radio = reset_radio("", object.index(), Some(default_index), |index| {
             wrap(T::default_fn(index))
         });
 

@@ -14,6 +14,7 @@ use crate::{
             card_from_audio_object, device_card_view, populate_audio_cards, stream_card_view,
         },
         comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
+        select_row::picklist_to_row,
     },
     utils::ignore,
     ReSetMessage,
@@ -36,7 +37,10 @@ pub enum AudioVariant {
 pub struct AudioModel<'a> {
     audio_proxy: Arc<AudioDbusProxy<'a>>,
     default_sink: u32,
+    // TODO beforepr find a better way to handle broken defaults
+    default_sink_dummy: bool,
     default_source: u32,
+    default_source_dummy: bool,
     audio_variant: AudioVariant,
     sinks: HashMap<u32, AudioSink>,
     sources: HashMap<u32, AudioSource>,
@@ -68,6 +72,8 @@ pub enum AudioMsg {
     SetSinkOfInputStream(InputStream, AudioSink),
     AddInputStream(InputStream),
     RemoveInputStream(u32),
+    AddAudioCard(AudioCard),
+    RemoveAudioCard(u32),
     SetProfileOfCard(u32, String),
 }
 
@@ -118,19 +124,35 @@ pub async fn watch_audio_dbus_signals(
             }
             "SinkAdded" | "SinkChanged" => {
                 let obj: AudioSink = msg.body().deserialize()?;
+                println!("sink added or changed");
+                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::AddSink(obj))).await;
             }
             "SinkRemoved" => {
                 let obj: u32 = msg.body().deserialize()?;
+                println!("sink removed");
+                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::RemoveSink(obj))).await;
             }
             "SourceAdded" | "SourceChanged" => {
                 let obj: AudioSource = msg.body().deserialize()?;
+                println!("source added or changed");
+                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::AddSource(obj))).await;
             }
             "SourceRemoved" => {
                 let obj: u32 = msg.body().deserialize()?;
+                println!("source removed");
+                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::RemoveSource(obj))).await;
+            }
+            "CardAdded" | "CardChanged" => {
+                let obj: AudioCard = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::AddAudioCard(obj))).await;
+            }
+            "CardRemoved" => {
+                let obj: u32 = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::RemoveAudioCard(obj))).await;
             }
             _ => (),
         }
@@ -162,6 +184,8 @@ impl AudioModel<'_> {
             output_streams,
             audio_variant: Default::default(),
             cards,
+            default_sink_dummy: false,
+            default_source_dummy: false,
         })
     }
 
@@ -188,10 +212,22 @@ impl AudioModel<'_> {
                 Task::none()
             }
             AudioMsg::AddSink(sink) => {
+                if self.default_sink_dummy {
+                    self.default_sink = sink.index;
+                    self.default_sink_dummy = false;
+                }
                 ignore(self.sinks.insert(sink.index, sink));
                 Task::none()
             }
             AudioMsg::RemoveSink(index) => {
+                if index == self.default_sink {
+                    if self.sinks.len() <= 1 {
+                        self.default_sink_dummy = true;
+                    } else {
+                        self.default_sink =
+                            self.sinks.values().find(|sink| sink.index != index)?.index;
+                    }
+                }
                 ignore(self.sinks.remove(&index));
                 Task::none()
             }
@@ -243,10 +279,25 @@ impl AudioModel<'_> {
                 Task::none()
             }
             AudioMsg::AddSource(source) => {
+                if self.default_source_dummy {
+                    self.default_source = source.index;
+                    self.default_source_dummy = false;
+                }
                 ignore(self.sources.insert(source.index, source));
                 Task::none()
             }
             AudioMsg::RemoveSource(index) => {
+                if index == self.default_source {
+                    if self.sources.len() <= 1 {
+                        self.default_source_dummy = true;
+                    } else {
+                        self.default_source = self
+                            .sources
+                            .values()
+                            .find(|source| source.index != index)?
+                            .index;
+                    }
+                }
                 ignore(self.sources.remove(&index));
                 Task::none()
             }
@@ -304,6 +355,16 @@ impl AudioModel<'_> {
                 );
                 Task::none()
             }
+            AudioMsg::AddAudioCard(audio_card) => {
+                println!("pingpagn");
+                ignore(self.cards.insert(audio_card.index, audio_card));
+                Task::none()
+            }
+            AudioMsg::RemoveAudioCard(index) => {
+                println!("remüve");
+                ignore(self.cards.remove(&index));
+                Task::none()
+            }
             AudioMsg::SetProfileOfCard(index, profile) => {
                 self.cards.get_mut(&index)?.active_profile = profile.clone();
                 ignore(
@@ -317,10 +378,15 @@ impl AudioModel<'_> {
         Some(cmd)
     }
 
-    pub fn view(&self) -> Element<ReSetMessage> {
+    // TODO beforepr handle errors
+    pub fn view(&self) -> Option<Element<ReSetMessage>> {
         let cards = {
-            let card_elements: Vec<Element<ReSetMessage>> =
-                self.cards.values().map(audio_cards).collect();
+            let card_elements: Vec<Element<ReSetMessage>> = self
+                .cards
+                .values()
+                .enumerate()
+                .map(|(index, card)| audio_cards(card, index, self.cards.len()))
+                .collect();
             let mut col = column![];
             for elem in card_elements {
                 col = col.push(elem);
@@ -328,9 +394,9 @@ impl AudioModel<'_> {
             col.into()
         };
         let output: Element<ReSetMessage> =
-            populate_audio_cards(self.default_sink, &self.sinks, &self.input_streams);
+            populate_audio_cards(self.default_sink, &self.sinks, &self.input_streams)?;
         let input = {
-            let source_card = card_from_audio_object(self.default_source, &self.sources).view();
+            let source_card = card_from_audio_object(self.default_source, &self.sources)?.view();
             let output_stream_cards: Vec<Element<ReSetMessage>> = self
                 .output_streams
                 .values()
@@ -374,7 +440,7 @@ impl AudioModel<'_> {
             AudioVariant::Devices => devices,
         };
         // Make an enum to buttons function
-        column![base].padding(20).into()
+        Some(column![base].padding(20).into())
     }
 }
 
@@ -384,7 +450,7 @@ fn set_volume(volume: &mut [u32], new_volume: u32) {
     }
 }
 
-fn audio_cards(card: &AudioCard) -> Element<'_, ReSetMessage> {
+fn audio_cards(card: &AudioCard, vec_index: usize, length: usize) -> Element<'_, ReSetMessage> {
     let index = card.index;
     let profiles: Vec<String> = card
         .profiles
@@ -392,14 +458,18 @@ fn audio_cards(card: &AudioCard) -> Element<'_, ReSetMessage> {
         .into_iter()
         .map(|value| value.name)
         .collect();
-    CustomPickList::new(
-        PickerVariant::ComboPicker(ComboPickerTitle::new(
-            card.name.clone(),
+    picklist_to_row(
+        CustomPickList::new(
+            PickerVariant::ComboPicker(ComboPickerTitle::new(
+                card.name.clone(),
+                Some(card.active_profile.clone()),
+            )),
+            profiles,
             Some(card.active_profile.clone()),
-        )),
-        profiles,
-        Some(card.active_profile.clone()),
-        move |profile| wrap(AudioMsg::SetProfileOfCard(index, profile)),
+            move |profile| wrap(AudioMsg::SetProfileOfCard(index, profile)),
+        ),
+        vec_index,
+        length,
     )
     .into()
 }

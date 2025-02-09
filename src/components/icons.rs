@@ -3,10 +3,22 @@ use oxiced::widgets::oxi_svg::SvgStyleVariant;
 
 #[derive(EnumStringify)]
 pub enum Icon {
+    Audio,
+    AudioDevices,
+    AudioCards,
     MicMuted,
     Mic,
     Volume,
     VolumeMuted,
+    // Also is Wifi3Bar
+    Wifi,
+    Wifi1Bar,
+    Wifi2Bar,
+    WifiDisabled,
+    WifiSettings,
+    Bluetooth,
+    BluetoothConnected,
+    BluetoothDisabled,
 }
 
 fn path(icon: Icon) -> String {

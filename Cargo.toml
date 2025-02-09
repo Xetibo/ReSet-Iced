@@ -10,6 +10,7 @@ oxiced = { git = "https://github.com/Xetibo/oxiced", branch = "dashie" }
 zbus = "5.3.1"
 #re_set-lib = "5.2.5"
 re_set-lib = { git = "https://github.com/Xetibo/ReSet-Lib", branch = "dashie-2" }
+#reset_daemon = "2.2.0"
 reset_daemon = { git = "https://github.com/Xetibo/ReSet-Daemon", branch = "dashie-2" }
 tokio = { version = "1.43.0", features = ["full"] }
 serde = "1.0.217"
