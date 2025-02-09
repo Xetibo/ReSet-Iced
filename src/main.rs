@@ -24,6 +24,7 @@ use network::network::{NetworkModel, NetworkMsg};
 use re_set_lib::write_log_to_file;
 use re_set_lib::LOG;
 use reset_daemon::run_daemon;
+use utils::TToOption;
 use zbus::Connection;
 
 mod audio;
@@ -269,6 +270,7 @@ pub async fn main() -> Result<(), iced::Error> {
         LOG!("Using Bundled Daemon")
     }
 
+    let icon = iced::window::icon::from_file("./assets/ReSet.svg").to_option();
     let window_settings = Settings {
         size: Size::default(),
         position: iced::window::Position::Default,
@@ -279,7 +281,7 @@ pub async fn main() -> Result<(), iced::Error> {
         decorations: true, // TODO beforepr
         transparent: false,
         level: iced::window::Level::Normal,
-        icon: None, // TODO beforepr add reset item
+        icon,
         platform_specific: iced::window::settings::PlatformSpecific {
             application_id: "ReSet-Iced".into(),
             override_redirect: false,
