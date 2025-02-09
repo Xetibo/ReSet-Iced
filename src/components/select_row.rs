@@ -2,8 +2,8 @@ use std::borrow::Borrow;
 
 use iced::{
     border::Radius,
-    widget::{self, text::LineHeight, PickList},
-    Border, Element, Pixels,
+    widget::{self},
+    Border,
 };
 
 use crate::ReSetMessage;

@@ -8,7 +8,6 @@ use iced::{
 };
 use oxiced::widgets::{
     oxi_button::{button, ButtonVariant},
-    oxi_radio::radio,
     oxi_slider,
 };
 

@@ -5,7 +5,6 @@ use iced::{
     widget::{column, row, text},
     Element, Task,
 };
-use oxiced::widgets::oxi_button::{button, ButtonVariant};
 use zbus::{Connection, Proxy};
 
 use crate::{

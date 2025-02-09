@@ -1,18 +1,15 @@
-use std::marker::PhantomData;
 
 use iced::{
     border::Radius,
     color,
     widget::{
         button::{Status, Style},
-        container, row, text,
-    },
-    window::Id,
-    Alignment, Border, Element, Length, Padding, Shadow, Size, Task, Theme, Vector,
+        container, row,
+    }, Border, Element, Length, Padding, Shadow, Theme, Vector,
 };
 use oxiced::widgets::common::{darken_color, lighten_color};
 
-use crate::{PageId, ReSetMessage};
+use crate::ReSetMessage;
 
 use super::icons::{icon_widget, Icon};
 
@@ -125,7 +122,7 @@ pub fn sidebar<'a>(entries: Vec<EntryCategory>) -> Element<'a, ReSetMessage> {
     //match size {}
     //
     let category_buttons: Vec<Element<'a, ReSetMessage>> =
-        entries.into_iter().map(create_category).flatten().collect();
+        entries.into_iter().flat_map(create_category).collect();
     let col = iced::widget::Column::with_children(category_buttons)
         .padding(10)
         .spacing(5);
