@@ -355,12 +355,10 @@ impl AudioModel<'_> {
                 Task::none()
             }
             AudioMsg::AddAudioCard(audio_card) => {
-                println!("pingpagn");
                 ignore(self.cards.insert(audio_card.index, audio_card));
                 Task::none()
             }
             AudioMsg::RemoveAudioCard(index) => {
-                println!("remüve");
                 ignore(self.cards.remove(&index));
                 Task::none()
             }

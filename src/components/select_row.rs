@@ -10,10 +10,11 @@ use crate::ReSetMessage;
 
 use super::comborow::CustomPickList;
 
-pub enum RowAt {
+enum RowAt {
     Start,
     Between,
     End,
+    Only,
 }
 
 fn radius(at: RowAt) -> Radius {
@@ -21,6 +22,7 @@ fn radius(at: RowAt) -> Radius {
         RowAt::Start => Radius::new(10).top_right(0).top_left(0),
         RowAt::Between => Radius::new(0),
         RowAt::End => Radius::new(10).bottom_right(0).bottom_left(0),
+        RowAt::Only => Radius::new(10),
     }
 }
 
@@ -45,7 +47,9 @@ where
     V: Borrow<T> + 'a,
 {
     picker.style(move |theme, state| {
-        let row_at = if index == 0 {
+        let row_at = if length == 1 {
+            RowAt::Only
+        } else if index == 0 {
             RowAt::End
         } else if index == length - 1 {
             RowAt::Start

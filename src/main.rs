@@ -4,6 +4,7 @@ use std::{
 };
 
 use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg, AudioVariant};
+use bluetooth::bluetooth_impl::{watch_bluetooth_dbus_signals, BluetoothModel, BluetoothMsg};
 use components::{
     icons::Icon,
     sidebar::{sidebar, EntryButton, EntryButtonLevel, EntryCategory},
@@ -20,13 +21,14 @@ use iced::{
     window::Settings,
     Element, Font, Size, Subscription, Task, Theme,
 };
-use network::network::{NetworkModel, NetworkMsg};
+use network::network_impl::{NetworkModel, NetworkMsg};
 use re_set_lib::write_log_to_file;
 use re_set_lib::LOG;
 use reset_daemon::run_daemon;
 use zbus::Connection;
 
 mod audio;
+mod bluetooth;
 mod components;
 mod dbus_interface;
 mod network;
@@ -41,6 +43,18 @@ enum PageId {
     Bluetooth,
 }
 
+impl PageId {
+    pub fn task(&self) -> Option<ReSetMessage> {
+        match self {
+            PageId::Audio => None,
+            PageId::Network => None,
+            PageId::Bluetooth => Some(ReSetMessage::SubMsgBluetooth(
+                BluetoothMsg::StartBluetoothListener,
+            )),
+        }
+    }
+}
+
 enum SenderOrNone {
     None,
     Sender(Sender<ReSetMessage>),
@@ -52,12 +66,14 @@ struct ReSet {
     current_page: PageId,
     audio_model: AudioModel<'static>,
     network_model: NetworkModel,
+    bluetooth_model: BluetoothModel<'static>,
 }
 
 #[derive(Debug, Clone)]
 enum ReSetMessage {
     SubMsgAudio(AudioMsg),
     SubMsgNetwork(NetworkMsg),
+    SubMsgBluetooth(BluetoothMsg),
     SetPage(PageId),
     StartWorker(PageId, Arc<Connection>),
     ReceiveSender(Sender<ReSetMessage>),
@@ -77,7 +93,9 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
                         .await
                         .expect("audio watcher failed"), // TODO beforepr
                     PageId::Network => (),
-                    PageId::Bluetooth => (),
+                    PageId::Bluetooth => watch_bluetooth_dbus_signals(&mut output, conn)
+                        .await
+                        .expect("audio watcher failed"), // TODO beforepr
                 }
             }
         }
@@ -102,6 +120,12 @@ impl ReSet {
                 .expect("Failed to create audio")
             // TODO beforepr expect
         };
+        let bluetooth_context = async || {
+            BluetoothModel::new(&ctx.clone())
+                .await
+                .expect("Failed to create audio")
+            // TODO beforepr expect
+        };
         (
             Self {
                 sender: SenderOrNone::None,
@@ -109,6 +133,7 @@ impl ReSet {
                 current_page: Default::default(),
                 audio_model: block_on(audio_context()),
                 network_model: Default::default(),
+                bluetooth_model: block_on(bluetooth_context()),
             },
             Task::none(),
         )
@@ -133,9 +158,25 @@ impl ReSet {
                 self.network_model.update(network_msg);
                 Task::none()
             }
+            ReSetMessage::SubMsgBluetooth(bluetooth_msg) => {
+                let update_fn = async || self.bluetooth_model.update(bluetooth_msg).await;
+                let output = block_on(update_fn());
+                if let Some(task) = output.ok() {
+                    task
+                } else {
+                    Task::none()
+                }
+            }
             ReSetMessage::SetPage(page_id) => {
                 self.current_page = page_id;
-                Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone()))
+                Task::batch([
+                    if let Some(msg) = PageId::task(&page_id) {
+                        Task::done(msg)
+                    } else {
+                        Task::none()
+                    },
+                    Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone())),
+                ])
             }
             ReSetMessage::StartWorker(page_id, connection) => {
                 match &mut self.sender {
@@ -231,7 +272,7 @@ impl ReSet {
                     .view()
                     .unwrap_or(column!(text("le error has happened")).into()),
                 PageId::Network => self.network_model.view(),
-                PageId::Bluetooth => row!(text("TODO")).into(),
+                PageId::Bluetooth => self.bluetooth_model.view(),
             }),
         )
         .into()
