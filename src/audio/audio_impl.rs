@@ -123,26 +123,18 @@ pub async fn watch_audio_dbus_signals(
             }
             "SinkAdded" | "SinkChanged" => {
                 let obj: AudioSink = msg.body().deserialize()?;
-                println!("sink added or changed");
-                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::AddSink(obj))).await;
             }
             "SinkRemoved" => {
                 let obj: u32 = msg.body().deserialize()?;
-                println!("sink removed");
-                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::RemoveSink(obj))).await;
             }
             "SourceAdded" | "SourceChanged" => {
                 let obj: AudioSource = msg.body().deserialize()?;
-                println!("source added or changed");
-                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::AddSource(obj))).await;
             }
             "SourceRemoved" => {
                 let obj: u32 = msg.body().deserialize()?;
-                println!("source removed");
-                dbg!(&obj);
                 let _res = sender.send(wrap(AudioMsg::RemoveSource(obj))).await;
             }
             "CardAdded" | "CardChanged" => {
@@ -263,7 +255,7 @@ impl AudioModel<'_> {
                 Task::none()
             }
             AudioMsg::SetSourceVolume(index, channels, volume) => {
-                let current_source = self.sinks.get_mut(&index)?;
+                let current_source = self.sources.get_mut(&index)?;
                 set_volume(&mut current_source.volume, volume);
                 ignore(
                     self.audio_proxy
@@ -392,34 +384,7 @@ impl AudioModel<'_> {
         };
         let output: Element<ReSetMessage> =
             populate_audio_cards(self.default_sink, &self.sinks, &self.input_streams)?;
-        let input = {
-            let source_card = card_from_audio_object(self.default_source, &self.sources)?.view();
-            let output_stream_cards: Vec<Element<ReSetMessage>> = self
-                .output_streams
-                .values()
-                .filter_map(|value| stream_card_view(value.clone(), &self.sources))
-                .collect();
-            let mut col = column![];
-            col = col.push(source_card);
-            col = col.push(iced::widget::Space::with_height(10));
-            col = col.push(iced::widget::Rule::horizontal(2));
-            col = col.push(iced::widget::Space::with_height(10));
-            let stream_count = if output_stream_cards.is_empty() {
-                0
-            } else {
-                output_stream_cards.len() - 1
-            };
-            for (i, elem) in output_stream_cards.into_iter().enumerate() {
-                col = col.push(elem);
-                if i != stream_count {
-                    col = col.push(iced::widget::Rule::horizontal(2));
-                }
-            }
-            column!(text("Input").size(30), col.spacing(20))
-                .padding(20)
-                .spacing(20)
-                .into()
-        };
+        let input = populate_audio_cards(self.default_source, &self.sources, &self.output_streams)?;
         // TODO beforepr, should these be combined??
         let devices = {
             row!(

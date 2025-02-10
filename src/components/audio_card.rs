@@ -176,7 +176,7 @@ where
         current_volume,
         move |value| wrap(T::volume_fn(index, channels, value)),
     )
-    .step(2000_u32);
+    .step(660_u32);
 
     let objects: Vec<T> = object_map.clone().into_values().collect();
     let pick_list = CustomPickList::new(
@@ -267,7 +267,7 @@ where
         current_volume,
         move |value| wrap(T::volume_fn(index, channels, value)),
     )
-    .step(2000_u32);
+    .step(660_u32);
 
     let objects: Vec<C> = object_map.clone().into_values().collect();
     let stream_clone = stream.clone();
