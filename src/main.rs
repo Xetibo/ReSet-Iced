@@ -86,6 +86,7 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
         let _ = output.send(ReSetMessage::ReceiveSender(sender)).await;
 
         loop {
+            // TODO resize event
             let input = receiver.select_next_some().await;
             if let ReSetMessage::StartWorker(page_id, conn) = input {
                 match page_id {

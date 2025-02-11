@@ -1,9 +1,10 @@
 use iced::{
     alignment::{Horizontal, Vertical},
-    border,
-    widget::{column, container::Style, row, text, Button, Radio, Slider},
-    Element, Length, Theme,
+    widget::{column, row, text, Button, Radio, Slider},
+    Element, Length,
 };
+
+use crate::utils::rounded_card;
 
 pub struct AudioDeviceCard<'a, C, Message> {
     mute_button: Button<'a, Message>,
@@ -31,16 +32,6 @@ where
         }
     }
 
-    fn style(theme: &Theme) -> Style {
-        let palette = theme.extended_palette();
-
-        Style {
-            background: Some(palette.background.weak.color.into()),
-            border: border::rounded(10),
-            ..Style::default()
-        }
-    }
-
     pub fn view(self) -> Element<'a, Message> {
         iced::widget::container(
             column!(
@@ -56,7 +47,7 @@ where
             .align_x(Horizontal::Left),
         )
         .padding(5)
-        .style(Self::style)
+        .style(rounded_card)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center)
         .into()

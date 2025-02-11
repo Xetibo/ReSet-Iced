@@ -3,15 +3,19 @@ use std::{collections::HashMap, sync::Arc};
 use iced::{
     futures::{channel::mpsc::Sender, SinkExt, StreamExt},
     widget::{column, row, text},
-    Element, Task,
+    Element, Length, Task,
 };
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
 use zbus::{zvariant::OwnedObjectPath, Connection, Proxy};
 
-use crate::{utils::ignore, ReSetMessage};
+use crate::{
+    components::icons::{icon_widget, Icon},
+    utils::ignore,
+    ReSetMessage,
+};
 
 use super::{
-    bluetooth_card::{bluetooth_device_buttons, BluetoothButtonVariant},
+    bluetooth_card::{bluetooth_adapter_view, bluetooth_device_buttons, BluetoothButtonVariant},
     dbus_interface::{BluetoothAdapter, BluetoothDbusProxy, BluetoothDevice, TPath},
 };
 
@@ -20,6 +24,14 @@ pub struct BluetoothModel<'a> {
     current_adapter: BluetoothAdapter,
     adapters: HashMap<zbus::zvariant::OwnedObjectPath, BluetoothAdapter>,
     devices: HashMap<zbus::zvariant::OwnedObjectPath, BluetoothDevice>,
+    page_id: BluetoothPageId,
+}
+
+#[derive(Default, Debug, Clone)]
+pub enum BluetoothPageId {
+    #[default]
+    Devices,
+    Adapter,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -39,6 +51,7 @@ pub enum BluetoothMsg {
     RemoveDevicePairing(zbus::zvariant::OwnedObjectPath),
     AddBluetoothDevice(BluetoothDevice),
     RemoveBluetoothDevice(zbus::zvariant::OwnedObjectPath),
+    SetPageId(BluetoothPageId),
 }
 
 // This sucks
@@ -94,6 +107,7 @@ impl<'a> BluetoothModel<'a> {
             current_adapter,
             adapters,
             devices,
+            page_id: Default::default(),
         })
     }
 
@@ -164,12 +178,26 @@ impl<'a> BluetoothModel<'a> {
                 self.devices.remove(&device_path);
                 Task::none()
             }
+            BluetoothMsg::SetPageId(page_id) => {
+                self.page_id = page_id;
+                Task::none()
+            }
         };
         Ok(task)
     }
 
     pub fn view(&self) -> Element<ReSetMessage> {
-        column!(
+        let devices = column!(
+            oxiced::widgets::oxi_button::button(
+                row!(
+                    text("Adapters").width(Length::Fill).size(20),
+                    icon_widget(Icon::ChevronRight).width(Length::Shrink)
+                )
+                .width(Length::Fill),
+                ButtonVariant::RowEntry
+            )
+            .on_press(wrap(BluetoothMsg::SetPageId(BluetoothPageId::Adapter)))
+            .width(Length::Fill),
             bluetooth_device_buttons(
                 &self
                     .devices
@@ -187,6 +215,26 @@ impl<'a> BluetoothModel<'a> {
                 BluetoothButtonVariant::Disconnect
             ),
         )
-        .into()
+        .padding(20)
+        .spacing(30);
+        let adapter = column!(
+            oxiced::widgets::oxi_button::button(
+                row!(
+                    text("Devices").width(Length::Fill).size(20),
+                    icon_widget(Icon::ChevronLeft).width(Length::Shrink)
+                )
+                .width(Length::Fill),
+                ButtonVariant::RowEntry
+            )
+            .on_press(wrap(BluetoothMsg::SetPageId(BluetoothPageId::Devices)))
+            .width(Length::Fill),
+            bluetooth_adapter_view(&self.current_adapter, &self.adapters.values().collect())
+        )
+        .padding(20)
+        .spacing(30);
+        match self.page_id {
+            BluetoothPageId::Devices => devices.into(),
+            BluetoothPageId::Adapter => adapter.into(),
+        }
     }
 }
