@@ -17,6 +17,7 @@ serde = "1.0.217"
 tap = "1.0.1"
 num-traits = "0.2.19"
 enum_stringify = "0.6.1"
+lyon_algorithms = "1.0.5"
 #TODO beforepr add reset lib
 
 #[dependencies.libcosmic]

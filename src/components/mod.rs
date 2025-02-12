@@ -1,7 +1,9 @@
 pub mod audio_card;
 pub mod audio_device_card;
 pub mod comborow;
+pub mod easing;
 pub mod icons;
+pub mod loading_spinner;
 pub mod radio;
 pub mod select_row;
 pub mod sidebar;

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, thread, time::Duration};
 
 use iced::{
     futures::{channel::mpsc::Sender, SinkExt, StreamExt},
@@ -6,10 +6,15 @@ use iced::{
     Element, Length, Task,
 };
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
+use tokio::time::sleep;
 use zbus::{zvariant::OwnedObjectPath, Connection, Proxy};
 
 use crate::{
-    components::icons::{icon_widget, Icon},
+    components::{
+        easing::{Easing, STANDARD},
+        icons::{icon_widget, Icon},
+        loading_spinner::Circular,
+    },
     utils::ignore,
     ReSetMessage,
 };
@@ -25,6 +30,7 @@ pub struct BluetoothModel<'a> {
     adapters: HashMap<zbus::zvariant::OwnedObjectPath, BluetoothAdapter>,
     devices: HashMap<zbus::zvariant::OwnedObjectPath, BluetoothDevice>,
     page_id: BluetoothPageId,
+    is_scanning: bool,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -108,6 +114,7 @@ impl<'a> BluetoothModel<'a> {
             adapters,
             devices,
             page_id: Default::default(),
+            is_scanning: false,
         })
     }
 
@@ -123,11 +130,20 @@ impl<'a> BluetoothModel<'a> {
                 Task::none()
             }
             BluetoothMsg::StartBluetoothListener => {
+                self.is_scanning = true;
+                // is async in order to not block
                 self.proxy.start_bluetooth_listener().await?;
-                Task::none()
+                let func = async || -> ReSetMessage {
+                    //sleep(Duration::from_millis(10_000)).await;
+                    thread::sleep(Duration::from_millis(10_000));
+                    wrap(BluetoothMsg::StopBluetoothListener)
+                };
+                Task::future(func())
             }
             BluetoothMsg::StopBluetoothListener => {
                 self.proxy.stop_bluetooth_listener().await?;
+                println!("pingpang");
+                self.is_scanning = false;
                 Task::none()
             }
             BluetoothMsg::SetBluetoothAdapter(adapter) => {
@@ -197,6 +213,32 @@ impl<'a> BluetoothModel<'a> {
                 ButtonVariant::RowEntry
             )
             .on_press(wrap(BluetoothMsg::SetPageId(BluetoothPageId::Adapter)))
+            .width(Length::Fill),
+            oxiced::widgets::oxi_button::button(
+                row!(
+                    text(if self.is_scanning {
+                        "Scanning"
+                    } else {
+                        "Start scan"
+                    })
+                    .width(Length::Fill)
+                    .size(20),
+                    if self.is_scanning {
+                        row!(Circular::new()
+                            .easing(&STANDARD)
+                            .cycle_duration(Duration::from_millis(3000)))
+                    } else {
+                        row!(icon_widget(Icon::Refresh).width(Length::Shrink))
+                    }
+                )
+                .width(Length::Fill),
+                ButtonVariant::RowEntry
+            )
+            .on_press_maybe(if self.is_scanning {
+                None
+            } else {
+                Some(wrap(BluetoothMsg::StartBluetoothListener))
+            })
             .width(Length::Fill),
             bluetooth_device_buttons(
                 &self

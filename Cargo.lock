@@ -3409,6 +3409,7 @@ version = "0.1.0"
 dependencies = [
  "enum_stringify",
  "iced",
+ "lyon_algorithms",
  "num-traits",
  "oxiced",
  "re_set-lib",

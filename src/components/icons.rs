@@ -25,6 +25,7 @@ pub enum Icon {
     // General
     ChevronLeft,
     ChevronRight,
+    Refresh,
 }
 
 fn path(icon: Icon) -> String {
