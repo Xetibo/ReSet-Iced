@@ -9,6 +9,7 @@ pub trait TPath {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
+#[zvariant(signature = "(onssobbbbbss)")]
 pub struct BluetoothDevice {
     pub path: OwnedObjectPath,
     pub rssi: i16,
@@ -22,6 +23,11 @@ pub struct BluetoothDevice {
     pub connected: bool,
     pub icon: String,
     pub address: String,
+    // Internal state, not sent or received
+    // Always set to false
+    #[zvariant(signature = "")]
+    #[serde(skip_serializing, default)]
+    pub conect_in_progress: bool,
 }
 
 impl TPath for BluetoothDevice {
@@ -53,6 +59,7 @@ impl TPath for BluetoothAdapter {
 )]
 pub trait BluetoothDbus {
     fn start_bluetooth_scan(&self) -> zbus::Result<()>;
+    fn stop_bluetooth_scan(&self) -> zbus::Result<()>;
     fn start_bluetooth_listener(&self) -> zbus::Result<()>;
     fn stop_bluetooth_listener(&self) -> zbus::Result<()>;
     fn get_bluetooth_adapters(&self) -> zbus::Result<Vec<BluetoothAdapter>>;

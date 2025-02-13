@@ -63,7 +63,7 @@ fn create_button<'a>(
             Icon::Bluetooth,
         ),
         BluetoothButtonVariant::Disconnect => (
-            BluetoothMsg::RemoveBluetoothDevice(value.path.clone()),
+            BluetoothMsg::DisconnectFromBluetoothDevice(value.path.clone()),
             Icon::BluetoothConnected,
         ),
     };
@@ -80,7 +80,11 @@ fn create_button<'a>(
                 .spacing(10),
                 ButtonVariant::Primary,
             )
-            .on_press(ReSetMessage::SubMsgBluetooth(msg))
+            .on_press_maybe(if value.conect_in_progress {
+                None
+            } else {
+                Some(ReSetMessage::SubMsgBluetooth(msg))
+            })
             .style(move |theme, state| {
                 let at = if length == 1 {
                     RowAt::Only

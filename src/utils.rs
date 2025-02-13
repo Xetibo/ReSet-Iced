@@ -12,3 +12,17 @@ pub fn rounded_card(theme: &Theme) -> Style {
         ..Style::default()
     }
 }
+
+pub trait TToError<T> {
+    fn to_zbus_error(self) -> Result<T, zbus::Error>;
+}
+
+impl<T> TToError<T> for Option<T> {
+    fn to_zbus_error(self) -> Result<T, zbus::Error> {
+        if let Some(value) = self {
+            Ok(value)
+        } else {
+            Err(zbus::Error::Failure("Error".to_string()))
+        }
+    }
+}

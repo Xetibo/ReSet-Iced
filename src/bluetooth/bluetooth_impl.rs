@@ -15,7 +15,7 @@ use crate::{
         icons::{icon_widget, Icon},
         loading_spinner::Circular,
     },
-    utils::ignore,
+    utils::{ignore, TToError},
     ReSetMessage,
 };
 
@@ -47,6 +47,8 @@ pub enum BluetoothMsg {
     GetDefaultBluetoothAdapter,
     StartBluetoothListener,
     StopBluetoothListener,
+    StartBluetoothScan,
+    StopBluetoothScan,
     SetBluetoothAdapter(zbus::zvariant::OwnedObjectPath),
     SetBluetoothAdapterEnabled(zbus::zvariant::OwnedObjectPath, bool),
     SetBluetoothAdapterDiscoverability(zbus::zvariant::OwnedObjectPath, bool),
@@ -134,15 +136,13 @@ impl<'a> BluetoothModel<'a> {
                 // is async in order to not block
                 self.proxy.start_bluetooth_listener().await?;
                 let func = async || -> ReSetMessage {
-                    //sleep(Duration::from_millis(10_000)).await;
                     thread::sleep(Duration::from_millis(10_000));
-                    wrap(BluetoothMsg::StopBluetoothListener)
+                    wrap(BluetoothMsg::StopBluetoothScan)
                 };
                 Task::future(func())
             }
             BluetoothMsg::StopBluetoothListener => {
                 self.proxy.stop_bluetooth_listener().await?;
-                println!("pingpang");
                 self.is_scanning = false;
                 Task::none()
             }
@@ -174,10 +174,18 @@ impl<'a> BluetoothModel<'a> {
                 Task::none()
             }
             BluetoothMsg::ConnectToBluetoothDevice(device) => {
+                self.devices
+                    .get_mut(&device)
+                    .to_zbus_error()?
+                    .conect_in_progress = true;
                 self.proxy.connect_to_bluetooth_device(device).await?;
                 Task::none()
             }
             BluetoothMsg::DisconnectFromBluetoothDevice(device) => {
+                self.devices
+                    .get_mut(&device)
+                    .to_zbus_error()?
+                    .conect_in_progress = true;
                 self.proxy.disconnect_from_bluetooth_device(device).await?;
                 Task::none()
             }
@@ -196,6 +204,16 @@ impl<'a> BluetoothModel<'a> {
             }
             BluetoothMsg::SetPageId(page_id) => {
                 self.page_id = page_id;
+                Task::none()
+            }
+            BluetoothMsg::StartBluetoothScan => {
+                self.proxy.start_bluetooth_scan().await?;
+                self.is_scanning = true;
+                Task::none()
+            }
+            BluetoothMsg::StopBluetoothScan => {
+                self.proxy.stop_bluetooth_scan().await?;
+                self.is_scanning = false;
                 Task::none()
             }
         };
@@ -237,7 +255,7 @@ impl<'a> BluetoothModel<'a> {
             .on_press_maybe(if self.is_scanning {
                 None
             } else {
-                Some(wrap(BluetoothMsg::StartBluetoothListener))
+                Some(wrap(BluetoothMsg::StartBluetoothScan))
             })
             .width(Length::Fill),
             bluetooth_device_buttons(
