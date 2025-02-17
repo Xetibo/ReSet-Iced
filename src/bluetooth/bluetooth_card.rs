@@ -1,12 +1,9 @@
-use std::collections::HashMap;
-
 use iced::{
     border::Radius,
     widget::{self, column, container, row, text},
     Border, Element, Length,
 };
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
-use zbus::zvariant::OwnedObjectPath;
 
 use crate::{
     components::icons::{icon_widget, Icon},
@@ -149,7 +146,7 @@ fn card_view<'a>(
         row!(
             text("Powered").width(Length::Fill),
             oxiced::widgets::oxi_toggler::toggler(adapter.powered).on_toggle(move |value| wrap(
-                BluetoothMsg::SetBluetoothAdapterDiscoverability(path1.clone(), value)
+                BluetoothMsg::SetBluetoothAdapterEnabled(path1.clone(), value)
             ))
         ),
         row!(
@@ -164,7 +161,7 @@ fn card_view<'a>(
         row!(
             text("Pairable").width(Length::Fill),
             oxiced::widgets::oxi_toggler::toggler(adapter.pairable).on_toggle(move |value| wrap(
-                BluetoothMsg::SetBluetoothAdapterDiscoverability(path3.clone(), value)
+                BluetoothMsg::SetBluetoothAdapterPairability(path3.clone(), value)
             ))
         )
     )

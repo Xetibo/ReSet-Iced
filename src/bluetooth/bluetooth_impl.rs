@@ -1,22 +1,26 @@
-use std::{collections::HashMap, sync::Arc, thread, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicU8, Arc},
+    thread,
+    time::Duration,
+};
 
 use iced::{
     futures::{channel::mpsc::Sender, SinkExt, StreamExt},
     widget::{column, row, text},
     Element, Length, Task,
 };
-use oxiced::widgets::oxi_button::{button, ButtonVariant};
-use tokio::time::sleep;
+use oxiced::widgets::oxi_button::ButtonVariant;
 use zbus::{zvariant::OwnedObjectPath, Connection, Proxy};
 
 use crate::{
     components::{
-        easing::{Easing, STANDARD},
+        easing::STANDARD,
         icons::{icon_widget, Icon},
         loading_spinner::Circular,
     },
-    utils::{ignore, TToError},
-    ReSetMessage,
+    utils::TToError,
+    PageId, ReSetMessage,
 };
 
 use super::{
@@ -42,21 +46,20 @@ pub enum BluetoothPageId {
 
 #[derive(Default, Debug, Clone)]
 pub enum BluetoothMsg {
+    GG,
     #[default]
     GetBluetoothAdapters,
-    GetDefaultBluetoothAdapter,
     StartBluetoothListener,
-    StopBluetoothListener,
+    StopBluetoothListener, // TODO use when moving away from this page
     StartBluetoothScan,
     StopBluetoothScan,
     SetBluetoothAdapter(zbus::zvariant::OwnedObjectPath),
     SetBluetoothAdapterEnabled(zbus::zvariant::OwnedObjectPath, bool),
     SetBluetoothAdapterDiscoverability(zbus::zvariant::OwnedObjectPath, bool),
     SetBluetoothAdapterPairability(zbus::zvariant::OwnedObjectPath, bool),
-    GetBluetoothDevices,
     ConnectToBluetoothDevice(zbus::zvariant::OwnedObjectPath),
     DisconnectFromBluetoothDevice(zbus::zvariant::OwnedObjectPath),
-    RemoveDevicePairing(zbus::zvariant::OwnedObjectPath),
+    RemoveDevicePairing(zbus::zvariant::OwnedObjectPath), // TODO should this even be done?
     AddBluetoothDevice(BluetoothDevice),
     RemoveBluetoothDevice(zbus::zvariant::OwnedObjectPath),
     SetPageId(BluetoothPageId),
@@ -66,24 +69,33 @@ pub enum BluetoothMsg {
 pub async fn watch_bluetooth_dbus_signals(
     sender: &mut Sender<ReSetMessage>,
     conn: Arc<Connection>,
+    current_page_id: Arc<AtomicU8>,
 ) -> Result<(), zbus::Error> {
     let proxy = BluetoothDbusProxy::new(&conn).await.expect("no proxy");
     let mut signals = Proxy::receive_all_signals(&proxy.into_inner()).await?;
-    while let Some(msg) = signals.next().await {
-        match msg.header().member().unwrap().to_string().as_str() {
-            "BluetoothDeviceAdded" | "BluetoothDeviceChanged" => {
-                let obj: BluetoothDevice = msg.body().deserialize()?;
-                let _res = sender
-                    .send(wrap(BluetoothMsg::AddBluetoothDevice(obj)))
-                    .await;
+    loop {
+        if current_page_id.load(std::sync::atomic::Ordering::SeqCst) != PageId::Bluetooth.into() {
+            sender.send(wrap(BluetoothMsg::GG)).await;
+            break;
+        } else {
+            sender.send(wrap(BluetoothMsg::GG)).await;
+        }
+        if let Some(msg) = signals.next().await {
+            match msg.header().member().unwrap().to_string().as_str() {
+                "BluetoothDeviceAdded" | "BluetoothDeviceChanged" => {
+                    let obj: BluetoothDevice = msg.body().deserialize()?;
+                    let _res = sender
+                        .send(wrap(BluetoothMsg::AddBluetoothDevice(obj)))
+                        .await;
+                }
+                "BluetoothDeviceRemoved" => {
+                    let obj: zbus::zvariant::OwnedObjectPath = msg.body().deserialize()?;
+                    let _res = sender
+                        .send(wrap(BluetoothMsg::RemoveBluetoothDevice(obj)))
+                        .await;
+                }
+                _ => (),
             }
-            "BluetoothDeviceRemoved" => {
-                let obj: zbus::zvariant::OwnedObjectPath = msg.body().deserialize()?;
-                let _res = sender
-                    .send(wrap(BluetoothMsg::RemoveBluetoothDevice(obj)))
-                    .await;
-            }
-            _ => (),
         }
     }
     Ok(())
@@ -122,13 +134,13 @@ impl<'a> BluetoothModel<'a> {
 
     pub async fn update(&mut self, msg: BluetoothMsg) -> Result<Task<ReSetMessage>, zbus::Error> {
         let task = match msg {
+            BluetoothMsg::GG => {
+                println!("whakasdfksdajf");
+                Task::none()
+            }
             BluetoothMsg::GetBluetoothAdapters => {
                 let adapters = self.proxy.get_bluetooth_adapters().await?;
                 self.adapters = to_map(adapters);
-                Task::none()
-            }
-            BluetoothMsg::GetDefaultBluetoothAdapter => {
-                self.current_adapter = self.proxy.get_current_bluetooth_adapter().await?;
                 Task::none()
             }
             BluetoothMsg::StartBluetoothListener => {
@@ -166,11 +178,6 @@ impl<'a> BluetoothModel<'a> {
                 self.proxy
                     .set_bluetooth_adapter_pairability(adapter, pairability)
                     .await?;
-                Task::none()
-            }
-            BluetoothMsg::GetBluetoothDevices => {
-                let devices = self.proxy.get_bluetooth_devices().await?;
-                self.devices = to_map(devices);
                 Task::none()
             }
             BluetoothMsg::ConnectToBluetoothDevice(device) => {

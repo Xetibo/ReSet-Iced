@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use zbus::{
     proxy,
-    zvariant::{ObjectPath, OwnedObjectPath, Type},
+    zvariant::{OwnedObjectPath, Type},
 };
 
 pub trait TPath {

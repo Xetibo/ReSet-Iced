@@ -1,22 +1,24 @@
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{
+    collections::HashMap,
+    error::Error,
+    sync::{atomic::AtomicU8, Arc},
+};
 
 use iced::{
     futures::{channel::mpsc::Sender, SinkExt, StreamExt},
-    widget::{column, row, text},
+    widget::{column, row},
     Element, Task,
 };
 use zbus::{Connection, Proxy};
 
 use crate::{
     components::{
-        audio_card::{
-            card_from_audio_object, device_card_view, populate_audio_cards, stream_card_view,
-        },
+        audio_card::{device_card_view, populate_audio_cards},
         comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
         select_row::picklist_to_row,
     },
     utils::ignore,
-    ReSetMessage,
+    PageId, ReSetMessage,
 };
 
 use super::dbus_interface::{
@@ -100,54 +102,62 @@ where
 pub async fn watch_audio_dbus_signals(
     sender: &mut Sender<ReSetMessage>,
     conn: Arc<Connection>,
+    current_page_id: Arc<AtomicU8>,
 ) -> Result<(), zbus::Error> {
     let proxy = AudioDbusProxy::new(&conn).await.expect("no proxy");
     let mut signals = Proxy::receive_all_signals(&proxy.into_inner()).await?;
-    while let Some(msg) = signals.next().await {
-        match msg.header().member().unwrap().to_string().as_str() {
-            "OutputStreamAdded" | "OutputStreamChanged" => {
-                let obj: OutputStream = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::AddOutputStream(obj))).await;
+    loop {
+        if current_page_id.load(std::sync::atomic::Ordering::SeqCst) != PageId::Audio.into() {
+            break;
+        }
+        if let Some(msg) = signals.next().await {
+            match msg.header().member().unwrap().to_string().as_str() {
+                "OutputStreamAdded" | "OutputStreamChanged" => {
+                    let obj: OutputStream = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::AddOutputStream(obj))).await;
+                }
+                "OutputStreamRemoved" => {
+                    let obj: u32 = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::RemoveOutputStream(obj))).await;
+                }
+                "InputStreamAdded" | "InputStreamChanged" => {
+                    let obj: InputStream = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::AddInputStream(obj))).await;
+                }
+                "InputStreamRemoved" => {
+                    let obj: u32 = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::RemoveInputStream(obj))).await;
+                }
+                "SinkAdded" | "SinkChanged" => {
+                    let obj: AudioSink = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::AddSink(obj))).await;
+                }
+                "SinkRemoved" => {
+                    let obj: u32 = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::RemoveSink(obj))).await;
+                }
+                "SourceAdded" | "SourceChanged" => {
+                    let obj: AudioSource = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::AddSource(obj))).await;
+                }
+                "SourceRemoved" => {
+                    let obj: u32 = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::RemoveSource(obj))).await;
+                }
+                "CardAdded" | "CardChanged" => {
+                    let obj: AudioCard = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::AddAudioCard(obj))).await;
+                }
+                "CardRemoved" => {
+                    let obj: u32 = msg.body().deserialize()?;
+                    let _res = sender.send(wrap(AudioMsg::RemoveAudioCard(obj))).await;
+                }
+                _ => (),
             }
-            "OutputStreamRemoved" => {
-                let obj: u32 = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::RemoveOutputStream(obj))).await;
-            }
-            "InputStreamAdded" | "InputStreamChanged" => {
-                let obj: InputStream = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::AddInputStream(obj))).await;
-            }
-            "InputStreamRemoved" => {
-                let obj: u32 = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::RemoveInputStream(obj))).await;
-            }
-            "SinkAdded" | "SinkChanged" => {
-                let obj: AudioSink = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::AddSink(obj))).await;
-            }
-            "SinkRemoved" => {
-                let obj: u32 = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::RemoveSink(obj))).await;
-            }
-            "SourceAdded" | "SourceChanged" => {
-                let obj: AudioSource = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::AddSource(obj))).await;
-            }
-            "SourceRemoved" => {
-                let obj: u32 = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::RemoveSource(obj))).await;
-            }
-            "CardAdded" | "CardChanged" => {
-                let obj: AudioCard = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::AddAudioCard(obj))).await;
-            }
-            "CardRemoved" => {
-                let obj: u32 = msg.body().deserialize()?;
-                let _res = sender.send(wrap(AudioMsg::RemoveAudioCard(obj))).await;
-            }
-            _ => (),
         }
     }
+
+    println!("end audio dbus listener");
     Ok(())
 }
 

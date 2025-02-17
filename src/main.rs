@@ -1,5 +1,9 @@
 use std::{
-    sync::{atomic::AtomicBool, Arc},
+    ptr::null,
+    sync::{
+        atomic::{AtomicBool, AtomicPtr, AtomicU8},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -34,13 +38,33 @@ mod dbus_interface;
 mod network;
 mod utils;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 enum PageId {
     // Chosen as it is probably the most useful page
     #[default]
     Audio,
     Network,
     Bluetooth,
+}
+
+impl Into<u8> for PageId {
+    fn into(self) -> u8 {
+        match self {
+            PageId::Audio => 0,
+            PageId::Network => 1,
+            PageId::Bluetooth => 2,
+        }
+    }
+}
+
+impl From<u8> for PageId {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Self::Audio,
+            1 => Self::Bluetooth,
+            _ => Self::Network,
+        }
+    }
 }
 
 impl PageId {
@@ -80,24 +104,34 @@ enum ReSetMessage {
 }
 
 fn some_worker() -> impl Stream<Item = ReSetMessage> {
-    stream::channel(100, |mut output| async move {
+    let mut page_id = PageId::Audio;
+    stream::channel(100, move |mut output| async move {
         let (sender, mut receiver) = mpsc::channel(100);
+        let current_page_id = Arc::new(AtomicU8::new(page_id.into()));
         // TODO beforepr handle error
         let _ = output.send(ReSetMessage::ReceiveSender(sender)).await;
 
+        println!("start");
         loop {
             // TODO resize event
+            println!("blet");
             let input = receiver.select_next_some().await;
             if let ReSetMessage::StartWorker(page_id, conn) = input {
+                current_page_id.store(page_id.into(), std::sync::atomic::Ordering::SeqCst);
                 match page_id {
-                    PageId::Audio => watch_audio_dbus_signals(&mut output, conn)
-                        .await
-                        .expect("audio watcher failed"), // TODO beforepr
+                    PageId::Audio => {
+                        watch_audio_dbus_signals(&mut output, conn, current_page_id.clone())
+                            .await
+                            .expect("audio watcher failed")
+                    } // TODO beforepr
                     PageId::Network => (),
-                    PageId::Bluetooth => watch_bluetooth_dbus_signals(&mut output, conn)
-                        .await
-                        .expect("audio watcher failed"), // TODO beforepr
+                    PageId::Bluetooth => {
+                        watch_bluetooth_dbus_signals(&mut output, conn, current_page_id.clone())
+                            .await
+                            .expect("audio watcher failed")
+                    } // TODO beforepr
                 }
+                println!("what");
             }
         }
     })
@@ -169,15 +203,19 @@ impl ReSet {
                 }
             }
             ReSetMessage::SetPage(page_id) => {
-                self.current_page = page_id;
-                Task::batch([
-                    if let Some(msg) = PageId::task(&page_id) {
-                        Task::done(msg)
-                    } else {
-                        Task::none()
-                    },
-                    Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone())),
-                ])
+                if page_id == self.current_page {
+                    Task::none()
+                } else {
+                    self.current_page = page_id;
+                    Task::batch([
+                        if let Some(msg) = PageId::task(&page_id) {
+                            Task::done(msg)
+                        } else {
+                            Task::none()
+                        },
+                        Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone())),
+                    ])
+                }
             }
             ReSetMessage::StartWorker(page_id, connection) => {
                 match &mut self.sender {
