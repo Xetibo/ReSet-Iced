@@ -1,8 +1,12 @@
-use iced::Element;
+use iced::{Element, Task};
+use zbus::Connection;
 
-use crate::ReSetMessage;
+use crate::{
+    utils::{ReSetError, TPage},
+    ReSetMessage,
+};
 
-use super::wireless::{WirelessModel, WirelessMsg};
+use super::wireless_impl::{WirelessModel, WirelessMsg};
 
 #[derive(Default, Debug, Clone)]
 pub enum NetworkPageId {
@@ -10,32 +14,46 @@ pub enum NetworkPageId {
     Wireless,
 }
 
-#[derive(Default)]
-pub struct NetworkModel {
+#[derive(Debug)]
+pub struct NetworkModel<'a> {
     current_page: NetworkPageId,
-    wireless_model: WirelessModel,
+    wireless_model: WirelessModel<'a>,
+}
+
+impl<'a> TPage<NetworkMsg, NetworkModel<'a>, ()> for NetworkModel<'a> {
+    fn enter() -> Task<ReSetMessage> {
+        WirelessModel::enter()
+    }
+
+    fn leave() -> Task<ReSetMessage> {
+        WirelessModel::leave()
+    }
+
+    async fn update(&mut self, msg: NetworkMsg) -> Option<Task<ReSetMessage>> {
+        match msg {
+            NetworkMsg::SubMsgWireless(wireless_msg) => {
+                let _ = self.wireless_model.update(wireless_msg).await?;
+            }
+        }
+        None
+    }
+
+    async fn new(ctx: &Connection, _: ()) -> Result<Self, ReSetError> {
+        let wireless_model = WirelessModel::new(ctx, ()).await?;
+        Ok(Self {
+            current_page: NetworkPageId::Wireless,
+            wireless_model,
+        })
+    }
+
+    fn view(&self) -> Result<Element<ReSetMessage>, ReSetError> {
+        match self.current_page {
+            NetworkPageId::Wireless => self.wireless_model.view(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum NetworkMsg {
     SubMsgWireless(WirelessMsg),
-}
-
-impl NetworkModel {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn update(&mut self, msg: NetworkMsg) {
-        match msg {
-            NetworkMsg::SubMsgWireless(wireless_msg) => self.wireless_model.update(wireless_msg),
-        }
-    }
-
-    pub fn view(&self) -> Element<ReSetMessage> {
-        println!("display network");
-        match self.current_page {
-            NetworkPageId::Wireless => self.wireless_model.view(),
-        }
-    }
 }

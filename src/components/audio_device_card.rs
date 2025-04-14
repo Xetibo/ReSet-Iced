@@ -1,10 +1,12 @@
 use iced::{
     alignment::{Horizontal, Vertical},
-    widget::{column, row, text, Button, Radio, Slider},
-    Element, Length,
+    widget::{column, row, Button, Radio, Slider},
+    Element,
 };
 
 use crate::utils::rounded_card;
+
+use super::text::content_text;
 
 pub struct AudioDeviceCard<'a, C, Message> {
     mute_button: Button<'a, Message>,
@@ -35,7 +37,7 @@ where
     pub fn view(self) -> Element<'a, Message> {
         iced::widget::container(
             column!(
-                row!(text(self.name).width(Length::Fill), self.radio)
+                row!(content_text(self.name), self.radio)
                     .padding(20)
                     .align_y(Vertical::Center),
                 row!(self.mute_button, self.slider)

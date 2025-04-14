@@ -1,12 +1,15 @@
 use iced::{
-    border::Radius,
-    widget::{self, column, container, row, text},
-    Border, Element, Length,
+    widget::{column, container, row},
+    Element, Length,
 };
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
 
 use crate::{
-    components::icons::{icon_widget, Icon},
+    components::{
+        icons::{icon_widget, Icon},
+        rowbutton::{self, RowbuttonPosition},
+        text::{content_text, title},
+    },
     utils::rounded_card,
     ReSetMessage,
 };
@@ -20,32 +23,6 @@ use super::{
 pub enum BluetoothButtonVariant {
     Connect,
     Disconnect,
-}
-
-enum RowAt {
-    Start,
-    Between,
-    End,
-    Only,
-}
-
-fn radius(at: RowAt) -> Radius {
-    match at {
-        RowAt::Start => Radius::new(10).top_right(0).top_left(0),
-        RowAt::Between => Radius::new(0),
-        RowAt::End => Radius::new(10).bottom_right(0).bottom_left(0),
-        RowAt::Only => Radius::new(10),
-    }
-}
-
-fn row_button_style(style: widget::button::Style, at: RowAt) -> widget::button::Style {
-    widget::button::Style {
-        border: Border {
-            radius: radius(at),
-            ..style.border
-        },
-        ..style
-    }
 }
 
 fn create_button<'a>(
@@ -72,7 +49,7 @@ fn create_button<'a>(
             button(
                 row!(
                     icon_widget(icon).width(Length::Shrink),
-                    text(value.alias.clone()),
+                    content_text(value.alias.clone()),
                 )
                 .spacing(10),
                 ButtonVariant::Primary,
@@ -84,15 +61,15 @@ fn create_button<'a>(
             })
             .style(move |theme, state| {
                 let at = if length == 1 {
-                    RowAt::Only
+                    RowbuttonPosition::Only
                 } else if index == 0 {
-                    RowAt::End
+                    RowbuttonPosition::End
                 } else if index == length - 1 {
-                    RowAt::Start
+                    RowbuttonPosition::Start
                 } else {
-                    RowAt::Between
+                    RowbuttonPosition::Between
                 };
-                row_button_style(oxiced::widgets::oxi_button::row_entry(theme, state), at)
+                rowbutton::style(oxiced::widgets::oxi_button::row_entry(theme, state), at)
             })
             .width(Length::Fill)
             .into(),
@@ -105,7 +82,7 @@ pub fn bluetooth_device_buttons<'a>(
     variant: BluetoothButtonVariant,
 ) -> Element<'a, ReSetMessage> {
     let length = devices.len();
-    let title = match variant {
+    let title_str = match variant {
         BluetoothButtonVariant::Connect => "Devices",
         BluetoothButtonVariant::Disconnect => "Connected Devices",
     };
@@ -115,7 +92,7 @@ pub fn bluetooth_device_buttons<'a>(
         .filter_map(|(index, value)| create_button(index, length, value, variant))
         .collect();
     column!(
-        text(title).size(25),
+        title(title_str),
         iced::widget::Column::with_children(views).width(Length::Fill)
     )
     .spacing(20)
@@ -138,19 +115,19 @@ fn card_view<'a>(
     let path3 = adapter.path.clone();
     let col = column!(
         row!(
-            text(adapter.alias.clone()).width(Length::Fill).size(25),
+            title(adapter.alias.clone()),
             oxiced::widgets::oxi_radio::radio("", index, default_index, move |_| wrap(
                 BluetoothMsg::SetBluetoothAdapter(path.clone())
             ))
         ),
         row!(
-            text("Powered").width(Length::Fill),
+            content_text("Powered"),
             oxiced::widgets::oxi_toggler::toggler(adapter.powered).on_toggle(move |value| wrap(
                 BluetoothMsg::SetBluetoothAdapterEnabled(path1.clone(), value)
             ))
         ),
         row!(
-            text("Discoverable").width(Length::Fill),
+            content_text("Discoverable"),
             oxiced::widgets::oxi_toggler::toggler(adapter.discoverable).on_toggle(move |value| {
                 wrap(BluetoothMsg::SetBluetoothAdapterDiscoverability(
                     path2.clone(),
@@ -159,7 +136,7 @@ fn card_view<'a>(
             })
         ),
         row!(
-            text("Pairable").width(Length::Fill),
+            content_text("Pairable"),
             oxiced::widgets::oxi_toggler::toggler(adapter.pairable).on_toggle(move |value| wrap(
                 BluetoothMsg::SetBluetoothAdapterPairability(path3.clone(), value)
             ))

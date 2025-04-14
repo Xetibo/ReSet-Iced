@@ -16,6 +16,12 @@ pub enum Icon {
     Wifi,
     Wifi1Bar,
     Wifi2Bar,
+    Wifi3Bar,
+    Wifi4Bar,
+    Wifi1BarLocked,
+    Wifi2BarLocked,
+    Wifi3BarLocked,
+    Wifi4BarLocked,
     WifiDisabled,
     WifiSettings,
     // Bluetooth

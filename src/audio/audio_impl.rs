@@ -1,24 +1,21 @@
-use std::{
-    collections::HashMap,
-    error::Error,
-    sync::{atomic::AtomicU8, Arc},
-};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 use iced::{
     futures::{channel::mpsc::Sender, SinkExt, StreamExt},
     widget::{column, row},
-    Element, Task,
+    Element, Length, Task,
 };
-use zbus::{Connection, Proxy};
+use zbus::{proxy::SignalStream, Connection};
 
 use crate::{
     components::{
         audio_card::{device_card_view, populate_audio_cards},
         comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
         select_row::picklist_to_row,
+        text::title,
     },
-    utils::ignore,
-    PageId, ReSetMessage,
+    utils::{ignore, ReSetError, TPage},
+    ReSetMessage,
 };
 
 use super::dbus_interface::{
@@ -35,6 +32,7 @@ pub enum AudioVariant {
     InputAndOutput,
 }
 
+#[derive(Debug, Clone)]
 pub struct AudioModel<'a> {
     audio_proxy: Arc<AudioDbusProxy<'a>>,
     default_sink: u32,
@@ -50,147 +48,16 @@ pub struct AudioModel<'a> {
     cards: HashMap<u32, AudioCard>,
 }
 
-#[derive(Debug, Clone)]
-pub enum AudioMsg {
-    SetAudioVariant(AudioVariant),
-    SetSinkVolume(u32, u16, u32),
-    SetSinkMute(u32, bool),
-    AddSink(AudioSink),
-    RemoveSink(u32),
-    SetDefaultSink(u32),
-    SetSourceVolume(u32, u16, u32),
-    SetSourceMute(u32, bool),
-    AddSource(AudioSource),
-    RemoveSource(u32),
-    SetDefaultSource(u32),
-    SetOutputStreamMute(u32, bool),
-    SetOutputStreamVolume(u32, u16, u32),
-    SetSourceOfOutputStream(OutputStream, AudioSource),
-    AddOutputStream(OutputStream),
-    RemoveOutputStream(u32),
-    SetInputStreamMute(u32, bool),
-    SetInputStreamVolume(u32, u16, u32),
-    SetSinkOfInputStream(InputStream, AudioSink),
-    AddInputStream(InputStream),
-    RemoveInputStream(u32),
-    AddAudioCard(AudioCard),
-    RemoveAudioCard(u32),
-    SetProfileOfCard(u32, String),
-}
-
-async fn create_audio_proxy(ctx: &Connection) -> Result<AudioDbusProxy<'static>, Box<dyn Error>> {
-    let proxy = AudioDbusProxy::new(ctx).await?;
-    Ok(proxy)
-}
-
-fn wrap(audio_msg: AudioMsg) -> ReSetMessage {
-    ReSetMessage::SubMsgAudio(audio_msg)
-}
-
-fn to_map<T>(elements: Vec<T>) -> HashMap<u32, T>
-where
-    T: TIndex,
-{
-    let mut map = HashMap::new();
-    for element in elements.into_iter() {
-        map.insert(element.index(), element);
-    }
-    map
-}
-
-// This sucks
-pub async fn watch_audio_dbus_signals(
-    sender: &mut Sender<ReSetMessage>,
-    conn: Arc<Connection>,
-    current_page_id: Arc<AtomicU8>,
-) -> Result<(), zbus::Error> {
-    let proxy = AudioDbusProxy::new(&conn).await.expect("no proxy");
-    let mut signals = Proxy::receive_all_signals(&proxy.into_inner()).await?;
-    loop {
-        if current_page_id.load(std::sync::atomic::Ordering::SeqCst) != PageId::Audio.into() {
-            break;
-        }
-        if let Some(msg) = signals.next().await {
-            match msg.header().member().unwrap().to_string().as_str() {
-                "OutputStreamAdded" | "OutputStreamChanged" => {
-                    let obj: OutputStream = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::AddOutputStream(obj))).await;
-                }
-                "OutputStreamRemoved" => {
-                    let obj: u32 = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::RemoveOutputStream(obj))).await;
-                }
-                "InputStreamAdded" | "InputStreamChanged" => {
-                    let obj: InputStream = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::AddInputStream(obj))).await;
-                }
-                "InputStreamRemoved" => {
-                    let obj: u32 = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::RemoveInputStream(obj))).await;
-                }
-                "SinkAdded" | "SinkChanged" => {
-                    let obj: AudioSink = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::AddSink(obj))).await;
-                }
-                "SinkRemoved" => {
-                    let obj: u32 = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::RemoveSink(obj))).await;
-                }
-                "SourceAdded" | "SourceChanged" => {
-                    let obj: AudioSource = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::AddSource(obj))).await;
-                }
-                "SourceRemoved" => {
-                    let obj: u32 = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::RemoveSource(obj))).await;
-                }
-                "CardAdded" | "CardChanged" => {
-                    let obj: AudioCard = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::AddAudioCard(obj))).await;
-                }
-                "CardRemoved" => {
-                    let obj: u32 = msg.body().deserialize()?;
-                    let _res = sender.send(wrap(AudioMsg::RemoveAudioCard(obj))).await;
-                }
-                _ => (),
-            }
-        }
+impl<'a> TPage<AudioMsg, AudioModel<'a>, ()> for AudioModel<'a> {
+    fn enter() -> Task<ReSetMessage> {
+        Task::none()
     }
 
-    println!("end audio dbus listener");
-    Ok(())
-}
-
-impl AudioModel<'_> {
-    pub async fn new(ctx: &Connection) -> Result<Self, zbus::Error> {
-        let proxy = Arc::new(
-            create_audio_proxy(ctx)
-                .await
-                .expect("Could not create proxy for audio"),
-        ); // TODO beforepr expect
-        let sinks = to_map(proxy.list_sinks().await?);
-        let default_sink = proxy.get_default_sink().await?;
-        let input_streams = to_map(proxy.list_input_streams().await?);
-        let sources = to_map(proxy.list_sources().await?);
-        let default_source = proxy.get_default_source().await?;
-        let output_streams = to_map(proxy.list_output_streams().await?);
-        let cards = to_map(proxy.list_cards().await?);
-        Ok(Self {
-            audio_proxy: proxy,
-            default_sink: default_sink.index,
-            default_source: default_source.index,
-            sinks,
-            sources,
-            input_streams,
-            output_streams,
-            audio_variant: Default::default(),
-            cards,
-            default_sink_dummy: false,
-            default_source_dummy: false,
-        })
+    fn leave() -> Task<ReSetMessage> {
+        Task::none()
     }
 
-    pub async fn update(&mut self, msg: AudioMsg) -> Option<Task<ReSetMessage>> {
+    async fn update(&mut self, msg: AudioMsg) -> Option<Task<ReSetMessage>> {
         let cmd = match msg {
             AudioMsg::SetAudioVariant(audio_variant) => {
                 self.audio_variant = audio_variant;
@@ -339,7 +206,6 @@ impl AudioModel<'_> {
                 ignore(self.output_streams.remove(&index));
                 Task::none()
             }
-            // TODO beforepr handle these properly when sink or source changes
             AudioMsg::SetDefaultSink(index) => {
                 self.default_sink = index;
                 let sink = self.sinks.get(&index)?;
@@ -376,9 +242,36 @@ impl AudioModel<'_> {
         };
         Some(cmd)
     }
+    async fn new(ctx: &Connection, _: ()) -> Result<Self, ReSetError> {
+        let proxy = Arc::new(
+            create_audio_proxy(ctx)
+                .await
+                .expect("Could not create proxy for audio"),
+        ); // TODO beforepr expect
+        let sinks = to_map(proxy.list_sinks().await?);
+        let default_sink = proxy.get_default_sink().await?;
+        let input_streams = to_map(proxy.list_input_streams().await?);
+        let sources = to_map(proxy.list_sources().await?);
+        let default_source = proxy.get_default_source().await?;
+        let output_streams = to_map(proxy.list_output_streams().await?);
+        let cards = to_map(proxy.list_cards().await?);
+        Ok(Self {
+            audio_proxy: proxy,
+            default_sink: default_sink.index,
+            default_source: default_source.index,
+            sinks,
+            sources,
+            input_streams,
+            output_streams,
+            audio_variant: Default::default(),
+            cards,
+            default_sink_dummy: false,
+            default_source_dummy: false,
+        })
+    }
 
     // TODO beforepr handle errors
-    pub fn view(&self) -> Option<Element<ReSetMessage>> {
+    fn view(&self) -> Result<Element<ReSetMessage>, ReSetError> {
         let cards = {
             let card_elements: Vec<Element<ReSetMessage>> = self
                 .cards
@@ -386,11 +279,16 @@ impl AudioModel<'_> {
                 .enumerate()
                 .map(|(index, card)| audio_cards(card, index, self.cards.len()))
                 .collect();
-            let mut col = column![];
+            let mut card_col = column![];
             for elem in card_elements {
-                col = col.push(elem);
+                card_col = card_col.push(elem);
             }
-            col.into()
+
+            column![title("Cards"), card_col]
+                .width(Length::Fill)
+                .padding(20)
+                .spacing(20)
+                .into()
         };
         let output: Element<ReSetMessage> =
             populate_audio_cards(self.default_sink, &self.sinks, &self.input_streams)?;
@@ -412,8 +310,109 @@ impl AudioModel<'_> {
             AudioVariant::Devices => devices,
         };
         // Make an enum to buttons function
-        Some(column![base].padding(20).into())
+        Ok(column![base].padding(20).into())
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum AudioMsg {
+    SetAudioVariant(AudioVariant),
+    SetSinkVolume(u32, u16, u32),
+    SetSinkMute(u32, bool),
+    AddSink(AudioSink),
+    RemoveSink(u32),
+    SetDefaultSink(u32),
+    SetSourceVolume(u32, u16, u32),
+    SetSourceMute(u32, bool),
+    AddSource(AudioSource),
+    RemoveSource(u32),
+    SetDefaultSource(u32),
+    SetOutputStreamMute(u32, bool),
+    SetOutputStreamVolume(u32, u16, u32),
+    SetSourceOfOutputStream(OutputStream, AudioSource),
+    AddOutputStream(OutputStream),
+    RemoveOutputStream(u32),
+    SetInputStreamMute(u32, bool),
+    SetInputStreamVolume(u32, u16, u32),
+    SetSinkOfInputStream(InputStream, AudioSink),
+    AddInputStream(InputStream),
+    RemoveInputStream(u32),
+    AddAudioCard(AudioCard),
+    RemoveAudioCard(u32),
+    SetProfileOfCard(u32, String),
+}
+
+async fn create_audio_proxy(ctx: &Connection) -> Result<AudioDbusProxy<'static>, Box<dyn Error>> {
+    let proxy = AudioDbusProxy::new(ctx).await?;
+    Ok(proxy)
+}
+
+fn wrap(audio_msg: AudioMsg) -> ReSetMessage {
+    ReSetMessage::SubMsgAudio(audio_msg)
+}
+
+fn to_map<T>(elements: Vec<T>) -> HashMap<u32, T>
+where
+    T: TIndex,
+{
+    let mut map = HashMap::new();
+    for element in elements.into_iter() {
+        map.insert(element.index(), element);
+    }
+    map
+}
+
+// This sucks
+pub async fn watch_audio_dbus_signals(
+    sender: &mut Sender<ReSetMessage>,
+    signals: &mut SignalStream<'_>,
+) -> Result<(), ReSetError> {
+    if let Some(msg) = signals.next().await {
+        match msg.header().member().unwrap().to_string().as_str() {
+            "OutputStreamAdded" | "OutputStreamChanged" => {
+                let obj: OutputStream = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::AddOutputStream(obj))).await;
+            }
+            "OutputStreamRemoved" => {
+                let obj: u32 = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::RemoveOutputStream(obj))).await;
+            }
+            "InputStreamAdded" | "InputStreamChanged" => {
+                let obj: InputStream = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::AddInputStream(obj))).await;
+            }
+            "InputStreamRemoved" => {
+                let obj: u32 = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::RemoveInputStream(obj))).await;
+            }
+            "SinkAdded" | "SinkChanged" => {
+                let obj: AudioSink = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::AddSink(obj))).await;
+            }
+            "SinkRemoved" => {
+                let obj: u32 = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::RemoveSink(obj))).await;
+            }
+            "SourceAdded" | "SourceChanged" => {
+                let obj: AudioSource = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::AddSource(obj))).await;
+            }
+            "SourceRemoved" => {
+                let obj: u32 = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::RemoveSource(obj))).await;
+            }
+            "CardAdded" | "CardChanged" => {
+                let obj: AudioCard = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::AddAudioCard(obj))).await;
+            }
+            "CardRemoved" => {
+                let obj: u32 = msg.body().deserialize()?;
+                let _res = sender.send(wrap(AudioMsg::RemoveAudioCard(obj))).await;
+            }
+            _ => (),
+        }
+    }
+    Ok(())
 }
 
 fn set_volume(volume: &mut [u32], new_volume: u32) {

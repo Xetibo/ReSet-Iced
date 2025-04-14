@@ -3,7 +3,7 @@ use std::{borrow::Borrow, collections::HashMap, ops::RangeInclusive};
 use iced::{
     alignment::{Horizontal, Vertical},
     border,
-    widget::{column, container::Style, row, text, Button, Slider},
+    widget::{column, container::Style, row, Button, Slider},
     Element, Length, Theme,
 };
 use oxiced::widgets::{
@@ -13,6 +13,7 @@ use oxiced::widgets::{
 
 use crate::{
     audio::{audio_impl::AudioMsg, dbus_interface::TAudioObject},
+    utils::ReSetError,
     ReSetMessage,
 };
 
@@ -21,6 +22,7 @@ use super::{
     comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
     icons::{icon_widget, Icon},
     radio::reset_radio,
+    text::{content_text, title},
 };
 
 pub trait TCardUser {
@@ -95,7 +97,7 @@ where
                 row!(
                     self.mute_button,
                     self.slider,
-                    text(format!("{}%", percentage))
+                    content_text(format!("{}%", percentage)),
                 )
                 .padding(20)
                 .spacing(20)
@@ -115,7 +117,7 @@ pub fn populate_audio_cards<'a, OBJ, STREAM>(
     index: u32,
     object_map: &'a HashMap<u32, OBJ>,
     stream_map: &'a HashMap<u32, STREAM>,
-) -> Option<Element<'a, ReSetMessage>>
+) -> Result<Element<'a, ReSetMessage>, ReSetError>
 where
     OBJ: TAudioObject + TCardUser + std::fmt::Display + Clone + PartialEq + 'a,
     STREAM: TAudioObject + TStreamCardUser<OBJ> + Clone + PartialEq + 'a,
@@ -142,12 +144,10 @@ where
             col = col.push(iced::widget::Rule::horizontal(2));
         }
     }
-    Some(
-        column!(text(OBJ::title()).size(30), col.spacing(20))
-            .padding(20)
-            .spacing(20)
-            .into(),
-    )
+    Ok(column!(title(OBJ::title()), col.spacing(20))
+        .padding(20)
+        .spacing(20)
+        .into())
 }
 
 fn get_volume_level(volume: &[u32]) -> u32 {
@@ -162,12 +162,16 @@ fn wrap(audio_msg: AudioMsg) -> ReSetMessage {
 pub fn card_from_audio_object<T>(
     index: u32,
     object_map: &HashMap<u32, T>,
-) -> Option<Card<'_, T, T, Vec<T>, ReSetMessage>>
+) -> Result<Card<'_, T, T, Vec<T>, ReSetMessage>, ReSetError>
 where
     T: Clone + ToString + PartialEq,
     T: TAudioObject + TCardUser,
 {
-    let object = object_map.get(&index)?.clone();
+    let object_opt = object_map.get(&index);
+    if let None = object_opt {
+        return Err(String::from("TODO failed to get audio object for card").into());
+    }
+    let object = object_opt.unwrap().clone();
 
     let current_volume = get_volume_level(&object.volume());
     let channels = object.channels();
@@ -195,7 +199,7 @@ where
     let mute_button =
         button(icon, ButtonVariant::Primary).on_press(wrap(T::mute_fn(index, !object.muted())));
 
-    Some(Card::new(pick_list, mute_button, slider, current_volume))
+    Ok(Card::new(pick_list, mute_button, slider, current_volume))
 }
 
 pub fn device_card_view<T>(
@@ -240,7 +244,7 @@ where
         .collect();
 
     column!(
-        text(format!("{} devices", T::title())).size(30),
+        title(format!("{} devices", T::title())),
         iced::widget::Column::with_children(cards).spacing(20)
     )
     .spacing(20)

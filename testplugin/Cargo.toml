@@ -1,7 +1,10 @@
 [package]
-name = "reset"
+name = "test_plugin"
 version = "0.1.0"
 edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
 
 [dependencies]
 iced = { version = "0.13.1", features = [
@@ -13,20 +16,18 @@ iced = { version = "0.13.1", features = [
 ] }
 #oxiced = "0.2.0"
 oxiced = { git = "https://github.com/Xetibo/oxiced", branch = "dashie" }
-zbus = "5.5.0"
+zbus = "5.3.1"
 #re_set-lib = "5.2.5"
 re_set-lib = { git = "https://github.com/Xetibo/ReSet-Lib", branch = "dashie-2" }
 #reset_daemon = "2.2.0"
 reset_daemon = { git = "https://github.com/Xetibo/ReSet-Daemon", branch = "dashie-2" }
-tokio = { version = "1.44.2", features = ["full"] }
-serde = "1.0.219"
+tokio = { version = "1.43.0", features = ["full"] }
+serde = "1.0.217"
 tap = "1.0.1"
 num-traits = "0.2.19"
-enum_stringify = "0.6.3"
+enum_stringify = "0.6.1"
 lyon_algorithms = "1.0.5"
 libloading = "0.8.6"
-once_cell = "1.21.3"
-toml = "0.8.20"
 #TODO beforepr add reset lib
 
 #[dependencies.libcosmic]

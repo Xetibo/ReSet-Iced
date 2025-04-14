@@ -1,14 +1,12 @@
-use std::{
-    ptr::null,
-    sync::{
-        atomic::{AtomicBool, AtomicPtr, AtomicU8},
-        Arc,
-    },
-    time::Duration,
+use any::ReSetAny;
+use audio::{
+    audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg, AudioVariant},
+    dbus_interface::AudioDbusProxy,
 };
-
-use audio::audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg, AudioVariant};
-use bluetooth::bluetooth_impl::{watch_bluetooth_dbus_signals, BluetoothModel, BluetoothMsg};
+use bluetooth::{
+    bluetooth_impl::{watch_bluetooth_dbus_signals, BluetoothModel, BluetoothMsg},
+    dbus_interface::BluetoothDbusProxy,
+};
 use components::{
     icons::Icon,
     sidebar::{sidebar, EntryButton, EntryButtonLevel, EntryCategory},
@@ -16,35 +14,116 @@ use components::{
 use dbus_interface::ReSetDbusProxy;
 use iced::{
     futures::{
-        channel::mpsc::{self, Sender},
+        self,
+        channel::{
+            mpsc::{self, Sender},
+            oneshot::{self, Receiver},
+        },
         executor::block_on,
-        SinkExt, Stream, StreamExt,
+        FutureExt, SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::{column, row, scrollable, text},
+    widget::{row, scrollable},
     window::Settings,
     Element, Font, Size, Subscription, Task, Theme,
 };
-use network::network_impl::{NetworkModel, NetworkMsg};
+use libloading::Symbol;
+use network::{
+    dbus_interface::WifiDbusProxy,
+    network_impl::{NetworkModel, NetworkMsg},
+    wireless_impl::{watch_wireless_dbus_signals, WirelessModel},
+};
+use plugins::{SETUP_LIBS, SETUP_PLUGIN_DIR};
 use re_set_lib::write_log_to_file;
 use re_set_lib::LOG;
 use reset_daemon::run_daemon;
-use zbus::Connection;
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
+use utils::{create_error, display_view_or_error, ReSetError, TPage};
 
+use zbus::{proxy::SignalStream, Connection, Proxy};
+
+// TODO move any to lib -> usage in plugins
+mod any;
 mod audio;
 mod bluetooth;
 mod components;
 mod dbus_interface;
 mod network;
+mod plugins;
 mod utils;
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
-enum PageId {
+// TODO make this work over C ABI
+//pub struct PluginFuncs2 {
+//    pub enter: libloading::Symbol<'static, unsafe extern "C" fn()>,
+//    pub leave: libloading::Symbol<'static, unsafe extern "C" fn()>,
+//    pub model: libloading::Symbol<
+//        'static,
+//        unsafe extern "C" fn(ctx: &zbus::Connection, additional_data: c_void) -> c_void,
+//    >,
+//    pub update:
+//        libloading::Symbol<'static, unsafe extern "C" fn(data: c_void, msg: c_void) -> c_void>,
+//    pub view: libloading::Symbol<'static, unsafe extern "C" fn(data: c_void) -> c_void>,
+//}
+
+//TODO move error into lib
+#[derive(Clone, Debug)]
+pub struct PluginFuncs {
+    pub enter:
+        libloading::Symbol<'static, unsafe extern "C" fn() -> Task<&'static mut dyn ReSetAny>>,
+    pub leave:
+        libloading::Symbol<'static, unsafe extern "C" fn() -> Task<&'static mut dyn ReSetAny>>,
+    pub model: libloading::Symbol<
+        'static,
+        unsafe extern "C" fn(
+            ctx: &zbus::Connection,
+            additional_data: &mut dyn ReSetAny,
+        ) -> &'static mut dyn ReSetAny,
+    >,
+    pub update: libloading::Symbol<
+        'static,
+        unsafe extern "C" fn(
+            data: &&mut dyn ReSetAny,
+            msg: &dyn ReSetAny,
+        ) -> Option<&'static dyn ReSetAny>,
+    >,
+    pub view: libloading::Symbol<
+        'static,
+        unsafe extern "C" fn(
+            data: &dyn ReSetAny,
+        ) -> Result<
+            Element<&'static mut dyn ReSetAny>,
+            &'static mut dyn ReSetAny,
+        >,
+    >,
+    pub signals: libloading::Symbol<
+        'static,
+        unsafe extern "C" fn(conn: &Connection) -> SignalStream<'static>,
+    >,
+    pub watch_signals: libloading::Symbol<
+        'static,
+        unsafe extern "C" fn(
+            sender: &mut dyn ReSetAny,
+            signals: &mut SignalStream<'static>,
+        ) -> Result<(), &'static mut dyn ReSetAny>,
+    >,
+}
+
+unsafe impl Send for PluginFuncs {}
+unsafe impl Sync for PluginFuncs {}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
+pub enum PageId {
     // Chosen as it is probably the most useful page
     #[default]
     Audio,
     Network,
     Bluetooth,
+    Plugin(u8),
 }
 
 impl Into<u8> for PageId {
@@ -53,6 +132,7 @@ impl Into<u8> for PageId {
             PageId::Audio => 0,
             PageId::Network => 1,
             PageId::Bluetooth => 2,
+            PageId::Plugin(id) => 3 + id, // TODO
         }
     }
 }
@@ -62,19 +142,40 @@ impl From<u8> for PageId {
         match value {
             0 => Self::Audio,
             1 => Self::Bluetooth,
-            _ => Self::Network,
+            2 => Self::Network,
+            id => PageId::Plugin(id - 3), // TODO
         }
     }
 }
 
 impl PageId {
-    pub fn task(&self) -> Option<ReSetMessage> {
+    pub fn enter(&self, plugin_funcs: HashMap<u8, PluginFuncs>) -> Task<ReSetMessage> {
         match self {
-            PageId::Audio => None,
-            PageId::Network => None,
-            PageId::Bluetooth => Some(ReSetMessage::SubMsgBluetooth(
-                BluetoothMsg::StartBluetoothListener,
-            )),
+            PageId::Audio => AudioModel::enter(),
+            PageId::Network => WirelessModel::enter(),
+            PageId::Bluetooth => BluetoothModel::enter(),
+            PageId::Plugin(id) => unsafe {
+                let leave = plugin_funcs.get(&id).unwrap().enter.clone();
+                let newid = id.clone();
+                (leave()).map(move |msg: &'static mut dyn ReSetAny| {
+                    ReSetMessage::SubPluginMsg(newid, Arc::new(msg))
+                })
+            },
+        }
+    }
+
+    pub fn leave(&self, plugin_funcs: HashMap<u8, PluginFuncs>) -> Task<ReSetMessage> {
+        match self {
+            PageId::Audio => AudioModel::leave(),
+            PageId::Network => NetworkModel::leave(),
+            PageId::Bluetooth => BluetoothModel::leave(),
+            PageId::Plugin(id) => unsafe {
+                let leave = plugin_funcs.get(&id).unwrap().leave.clone();
+                let newid = id.clone();
+                (leave()).map(move |msg: &'static mut dyn ReSetAny| {
+                    ReSetMessage::SubPluginMsg(newid, Arc::new(msg))
+                })
+            },
         }
     }
 }
@@ -88,50 +189,159 @@ struct ReSet {
     sender: SenderOrNone,
     ctx: Arc<Connection>,
     current_page: PageId,
-    audio_model: AudioModel<'static>,
-    network_model: NetworkModel,
-    bluetooth_model: BluetoothModel<'static>,
+    model_map: HashMap<PageId, &'static mut dyn ReSetAny>,
+    plugin_funcs: HashMap<u8, PluginFuncs>,
 }
 
-#[derive(Debug, Clone)]
-enum ReSetMessage {
+#[derive(Debug)]
+pub enum ReSetMessage {
     SubMsgAudio(AudioMsg),
     SubMsgNetwork(NetworkMsg),
     SubMsgBluetooth(BluetoothMsg),
+    SubPluginMsg(u8, Arc<dyn ReSetAny>),
     SetPage(PageId),
-    StartWorker(PageId, Arc<Connection>),
+    StartWorker(PageId, Arc<Connection>, HashMap<u8, PluginFuncs>),
     ReceiveSender(Sender<ReSetMessage>),
 }
 
+impl Clone for ReSetMessage {
+    fn clone(&self) -> Self {
+        match self {
+            ReSetMessage::SubMsgAudio(audio_msg) => Self::SubMsgAudio(audio_msg.clone()),
+            ReSetMessage::SubMsgNetwork(network_msg) => Self::SubMsgNetwork(network_msg.clone()),
+            ReSetMessage::SubMsgBluetooth(bluetooth_msg) => {
+                Self::SubMsgBluetooth(bluetooth_msg.clone())
+            }
+            ReSetMessage::SubPluginMsg(id, any) => Self::SubPluginMsg(*id, any.clone()),
+            ReSetMessage::SetPage(page_id) => Self::SetPage(*page_id),
+            ReSetMessage::StartWorker(page_id, connection, plugins) => {
+                Self::StartWorker(*page_id, connection.clone(), plugins.clone())
+            }
+            ReSetMessage::ReceiveSender(sender) => Self::ReceiveSender(sender.clone()),
+        }
+    }
+}
+
+unsafe impl Send for ReSetMessage {}
+unsafe impl Sync for ReSetMessage {}
+
+// This stops each page daemon on page transition
+async fn wrap_daemon(
+    shutdown_rx: &mut Receiver<()>,
+    output: &mut Sender<ReSetMessage>,
+    mut signals: SignalStream<'static>,
+    daemonfn: impl AsyncFn(
+        &mut Sender<ReSetMessage>,
+        &mut SignalStream<'static>,
+    ) -> Result<(), ReSetError>,
+) {
+    let shutdown_future = shutdown_rx.map(|_| ());
+    let mut shutdown_future = Box::pin(shutdown_future);
+
+    loop {
+        futures::select! {
+            _ = shutdown_future => {
+                break;
+            },
+            default => daemonfn(output, &mut signals).await.expect("")
+        }
+    }
+}
+
+fn wrap_daemon_plugin(
+    shutdown_rx: &mut Receiver<()>,
+    output: &mut Sender<ReSetMessage>,
+    mut signals: SignalStream<'static>,
+    daemonfn: &Symbol<
+        'static,
+        unsafe extern "C" fn(
+            &mut dyn ReSetAny,
+            &mut SignalStream<'static>,
+        ) -> Result<(), &'static mut dyn ReSetAny>,
+    >,
+) {
+    let shutdown_future = shutdown_rx.map(|_| ());
+    let mut shutdown_future = Box::pin(shutdown_future);
+
+    loop {
+        futures::select! {
+            _ = shutdown_future => {
+                break;
+            },
+            default => unsafe {daemonfn(output as &mut dyn ReSetAny, &mut signals).expect("")}
+        }
+    }
+}
+
 fn some_worker() -> impl Stream<Item = ReSetMessage> {
-    let mut page_id = PageId::Audio;
     stream::channel(100, move |mut output| async move {
         let (sender, mut receiver) = mpsc::channel(100);
-        let current_page_id = Arc::new(AtomicU8::new(page_id.into()));
         // TODO beforepr handle error
         let _ = output.send(ReSetMessage::ReceiveSender(sender)).await;
 
-        println!("start");
         loop {
+            let (shutdown_sender, mut shutdown_receiver) = oneshot::channel();
             // TODO resize event
-            println!("blet");
             let input = receiver.select_next_some().await;
-            if let ReSetMessage::StartWorker(page_id, conn) = input {
-                current_page_id.store(page_id.into(), std::sync::atomic::Ordering::SeqCst);
+            if let ReSetMessage::StartWorker(page_id, conn, plugins) = input {
+                // TODO beforepr handle error
+                let _ = shutdown_sender.send(());
                 match page_id {
                     PageId::Audio => {
-                        watch_audio_dbus_signals(&mut output, conn, current_page_id.clone())
+                        let proxy = AudioDbusProxy::new(&conn).await.expect("no proxy");
+                        let signals = Proxy::receive_all_signals(&proxy.into_inner())
                             .await
-                            .expect("audio watcher failed")
-                    } // TODO beforepr
-                    PageId::Network => (),
+                            .expect("no proxy");
+                        let _ = wrap_daemon(
+                            &mut shutdown_receiver,
+                            &mut output,
+                            signals,
+                            watch_audio_dbus_signals,
+                        )
+                        .await;
+                        ()
+                    }
+                    PageId::Network => {
+                        let proxy = WifiDbusProxy::new(&conn).await.expect("no proxy");
+                        let signals = Proxy::receive_all_signals(&proxy.into_inner())
+                            .await
+                            .expect("no proxy");
+                        let _ = wrap_daemon(
+                            &mut shutdown_receiver,
+                            &mut output,
+                            signals,
+                            watch_wireless_dbus_signals,
+                        )
+                        .await;
+                        ()
+                    }
                     PageId::Bluetooth => {
-                        watch_bluetooth_dbus_signals(&mut output, conn, current_page_id.clone())
+                        let proxy = BluetoothDbusProxy::new(&conn).await.expect("no proxy");
+                        let signals = Proxy::receive_all_signals(&proxy.into_inner())
                             .await
-                            .expect("audio watcher failed")
-                    } // TODO beforepr
+                            .expect("no proxy");
+                        let _ = wrap_daemon(
+                            &mut shutdown_receiver,
+                            &mut output,
+                            signals,
+                            watch_bluetooth_dbus_signals,
+                        )
+                        .await;
+                        ()
+                    }
+                    PageId::Plugin(id) => {
+                        let funcs = plugins.get(&id).unwrap();
+                        unsafe {
+                            let signals = (funcs.signals)(&conn);
+                            wrap_daemon_plugin(
+                                &mut shutdown_receiver,
+                                &mut output,
+                                signals,
+                                &funcs.watch_signals,
+                            )
+                        }
+                    }
                 }
-                println!("what");
             }
         }
     })
@@ -150,25 +360,50 @@ impl ReSet {
         // TODO beforepr handle error
         let ctx = Arc::new(block_on(Connection::session()).unwrap());
         let audio_context = async || {
-            AudioModel::new(&ctx.clone())
+            AudioModel::new(&ctx.clone(), ())
                 .await
                 .expect("Failed to create audio")
             // TODO beforepr expect
         };
         let bluetooth_context = async || {
-            BluetoothModel::new(&ctx.clone())
+            BluetoothModel::new(&ctx.clone(), ())
                 .await
-                .expect("Failed to create audio")
+                .expect("Failed to create bluetooth")
             // TODO beforepr expect
         };
+        let network_context = async || {
+            NetworkModel::new(&ctx.clone(), ())
+                .await
+                .expect("Failed to create network")
+            // TODO beforepr expect
+        };
+        let audio_model = Box::<AudioModel<'_>>::leak(Box::new(block_on(audio_context())));
+        let network_model = Box::<NetworkModel<'_>>::leak(Box::new(block_on(network_context())));
+        let bluetooth_model =
+            Box::<BluetoothModel<'_>>::leak(Box::new(block_on(bluetooth_context())));
+        let mut model_map = HashMap::new();
+        model_map.insert(PageId::Audio, audio_model as &mut dyn ReSetAny);
+        model_map.insert(PageId::Network, network_model as &mut dyn ReSetAny);
+        model_map.insert(PageId::Bluetooth, bluetooth_model as &mut dyn ReSetAny);
+
+        // TODO get plugins?
+        let mut plugin_funcs: HashMap<u8, PluginFuncs> = HashMap::new();
+        let mut index = 0;
+        // TODO
+        //for plugin in load_plugins() {
+        //    let modelfn = plugin.model.clone();
+        //    let model = unsafe { (modelfn)(&ctx.clone(), &mut () as &mut dyn ReSetAny) };
+        //    model_map.insert(PageId::Plugin(index), model);
+        //    plugin_funcs.insert(index as u8, plugin);
+        //    index += 1;
+        //}
         (
             Self {
                 sender: SenderOrNone::None,
                 ctx: ctx.clone(),
                 current_page: Default::default(),
-                audio_model: block_on(audio_context()),
-                network_model: Default::default(),
-                bluetooth_model: block_on(bluetooth_context()),
+                model_map,
+                plugin_funcs,
             },
             Task::none(),
         )
@@ -178,11 +413,31 @@ impl ReSet {
         String::from("ReSet")
     }
 
+    fn update_submodel<Model, Message, A>(
+        &mut self,
+        page_id: PageId,
+        message: Message,
+    ) -> Option<Task<ReSetMessage>>
+    where
+        Model: TPage<Message, Model, A> + ReSetAny + Debug + 'static,
+    {
+        let update_fn = async || {
+            self.model_map
+                .get_mut(&page_id)
+                .unwrap()
+                .downcast_mut::<Model>()
+                .unwrap()
+                .update(message)
+                .await
+        };
+        block_on(update_fn())
+    }
+
     fn update(&mut self, message: ReSetMessage) -> Task<ReSetMessage> {
         match message {
             ReSetMessage::SubMsgAudio(audio_msg) => {
-                let update_fn = async || self.audio_model.update(audio_msg).await;
-                let output = block_on(update_fn());
+                let output = self
+                    .update_submodel::<AudioModel<'static>, AudioMsg, ()>(PageId::Audio, audio_msg);
                 if let Some(task) = output {
                     task
                 } else {
@@ -190,17 +445,31 @@ impl ReSet {
                 }
             }
             ReSetMessage::SubMsgNetwork(network_msg) => {
-                self.network_model.update(network_msg);
+                let _ = self.update_submodel::<NetworkModel<'static>, NetworkMsg, ()>(
+                    PageId::Network,
+                    network_msg,
+                );
                 Task::none()
             }
             ReSetMessage::SubMsgBluetooth(bluetooth_msg) => {
-                let update_fn = async || self.bluetooth_model.update(bluetooth_msg).await;
-                let output = block_on(update_fn());
-                if let Some(task) = output.ok() {
+                let output = self.update_submodel::<BluetoothModel<'static>, BluetoothMsg, ()>(
+                    PageId::Bluetooth,
+                    bluetooth_msg,
+                );
+                if let Some(task) = output {
                     task
                 } else {
                     Task::none()
                 }
+            }
+            ReSetMessage::SubPluginMsg(id, msg) => {
+                let plugin = self.plugin_funcs.get(&id).unwrap();
+                let model = self.model_map.get(&PageId::Plugin(id)).unwrap();
+                let update_func = plugin.update.clone();
+                unsafe {
+                    let _ = (update_func)(model, &msg);
+                }
+                Task::none()
             }
             ReSetMessage::SetPage(page_id) => {
                 if page_id == self.current_page {
@@ -208,22 +477,23 @@ impl ReSet {
                 } else {
                     self.current_page = page_id;
                     Task::batch([
-                        if let Some(msg) = PageId::task(&page_id) {
-                            Task::done(msg)
-                        } else {
-                            Task::none()
-                        },
-                        Task::done(ReSetMessage::StartWorker(page_id, self.ctx.clone())),
+                        PageId::leave(&self.current_page, self.plugin_funcs.clone()),
+                        PageId::enter(&page_id, self.plugin_funcs.clone()),
+                        Task::done(ReSetMessage::StartWorker(
+                            page_id,
+                            self.ctx.clone(),
+                            self.plugin_funcs.clone(),
+                        )),
                     ])
                 }
             }
-            ReSetMessage::StartWorker(page_id, connection) => {
+            ReSetMessage::StartWorker(page_id, connection, plugins) => {
                 match &mut self.sender {
                     SenderOrNone::None => (),
                     SenderOrNone::Sender(sender) => {
                         let fun = async || {
                             sender
-                                .send(ReSetMessage::StartWorker(page_id, connection))
+                                .send(ReSetMessage::StartWorker(page_id, connection, plugins))
                                 .await
                         };
                         let _ = block_on(fun());
@@ -298,21 +568,60 @@ impl ReSet {
                 },
                 sub_entries: Vec::new(),
             };
-            vec![audio, network, bluetooth]
+            let plugin = EntryCategory {
+                main_entry: EntryButton {
+                    title: "Plugin",
+                    icon: None,
+                    msg: ReSetMessage::SetPage(PageId::Plugin(0)),
+                    level: EntryButtonLevel::TopLevel,
+                },
+                sub_entries: Vec::new(),
+            };
+            vec![audio, network, bluetooth, plugin]
         };
         row!(
             // TODO beforepr set audio and network
             sidebar(entries),
             // TODO beforepr make a wrapper over everything ->
             // 3 views  -> 1 box without sidebar -> 1 box with sidebar -> 2 boxes with sidebar
-            scrollable(match self.current_page {
+            scrollable(display_view_or_error(match self.current_page {
                 PageId::Audio => self
-                    .audio_model
-                    .view()
-                    .unwrap_or(column!(text("le error has happened")).into()),
-                PageId::Network => self.network_model.view(),
-                PageId::Bluetooth => self.bluetooth_model.view(),
-            }),
+                    .model_map
+                    .get(&PageId::Audio)
+                    .unwrap()
+                    .downcast_ref::<AudioModel<'_>>()
+                    .unwrap()
+                    .view(),
+                PageId::Network => self
+                    .model_map
+                    .get(&PageId::Network)
+                    .unwrap()
+                    .downcast_ref::<NetworkModel<'_>>()
+                    .unwrap()
+                    .view(),
+                PageId::Bluetooth => self
+                    .model_map
+                    .get(&PageId::Bluetooth)
+                    .unwrap()
+                    .downcast_ref::<BluetoothModel<'_>>()
+                    .unwrap()
+                    .view(),
+                PageId::Plugin(id) => {
+                    let plugin = self.plugin_funcs.get(&id).unwrap();
+                    let model = self.model_map.get(&PageId::Plugin(id)).unwrap();
+                    let view_func = plugin.view.clone();
+                    let view_res = unsafe { (view_func)(model) };
+                    match view_res {
+                        Ok(view) => {
+                            Ok(view.map(move |msg| ReSetMessage::SubPluginMsg(id, Arc::new(msg))))
+                        }
+                        // TODO prob better in a different way
+                        Err(err) => Err(create_error(
+                            err.downcast_ref::<ReSetError>().unwrap().to_string(),
+                        )),
+                    }
+                }
+            }))
         )
         .into()
     }
@@ -376,6 +685,9 @@ pub async fn main() -> Result<(), iced::Error> {
         },
         exit_on_close_request: true,
     };
+
+    SETUP_PLUGIN_DIR();
+    SETUP_LIBS();
 
     iced::application(ReSet::title, ReSet::update, ReSet::view)
         .window(window_settings)
