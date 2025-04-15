@@ -1,4 +1,3 @@
-use any::ReSetAny;
 use audio::{
     audio_impl::{watch_audio_dbus_signals, AudioModel, AudioMsg, AudioVariant},
     dbus_interface::AudioDbusProxy,
@@ -33,9 +32,9 @@ use network::{
     network_impl::{NetworkModel, NetworkMsg},
     wireless_impl::{watch_wireless_dbus_signals, WirelessModel},
 };
-use plugins::{SETUP_LIBS, SETUP_PLUGIN_DIR};
-use re_set_lib::write_log_to_file;
-use re_set_lib::LOG;
+use plugins::{load_plugins, SETUP_LIBS, SETUP_PLUGIN_DIR};
+use re_set_lib::{utils::any::ReSetAny, write_log_to_file};
+use re_set_lib::{utils::error::ReSetError, LOG};
 use reset_daemon::run_daemon;
 use std::{
     collections::HashMap,
@@ -43,12 +42,10 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
-use utils::{create_error, display_view_or_error, ReSetError, TPage};
+use utils::{display_view_or_error, TPage};
 
 use zbus::{proxy::SignalStream, Connection, Proxy};
 
-// TODO move any to lib -> usage in plugins
-mod any;
 mod audio;
 mod bluetooth;
 mod components;
@@ -95,21 +92,18 @@ pub struct PluginFuncs {
         'static,
         unsafe extern "C" fn(
             data: &dyn ReSetAny,
-        ) -> Result<
-            Element<&'static mut dyn ReSetAny>,
-            &'static mut dyn ReSetAny,
-        >,
+        ) -> Result<Element<&'static mut dyn ReSetAny>, ReSetError>,
     >,
     pub signals: libloading::Symbol<
         'static,
-        unsafe extern "C" fn(conn: &Connection) -> SignalStream<'static>,
+        unsafe extern "C" fn(conn: &Connection) -> Option<SignalStream<'static>>,
     >,
     pub watch_signals: libloading::Symbol<
         'static,
         unsafe extern "C" fn(
             sender: &mut dyn ReSetAny,
             signals: &mut SignalStream<'static>,
-        ) -> Result<(), &'static mut dyn ReSetAny>,
+        ) -> Result<(), ReSetError>,
     >,
 }
 
@@ -257,7 +251,7 @@ fn wrap_daemon_plugin(
         unsafe extern "C" fn(
             &mut dyn ReSetAny,
             &mut SignalStream<'static>,
-        ) -> Result<(), &'static mut dyn ReSetAny>,
+        ) -> Result<(), ReSetError>,
     >,
 ) {
     let shutdown_future = shutdown_rx.map(|_| ());
@@ -332,13 +326,14 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
                     PageId::Plugin(id) => {
                         let funcs = plugins.get(&id).unwrap();
                         unsafe {
-                            let signals = (funcs.signals)(&conn);
-                            wrap_daemon_plugin(
-                                &mut shutdown_receiver,
-                                &mut output,
-                                signals,
-                                &funcs.watch_signals,
-                            )
+                            if let Some(signals) = (funcs.signals)(&conn) {
+                                wrap_daemon_plugin(
+                                    &mut shutdown_receiver,
+                                    &mut output,
+                                    signals,
+                                    &funcs.watch_signals,
+                                )
+                            }
                         }
                     }
                 }
@@ -386,17 +381,16 @@ impl ReSet {
         model_map.insert(PageId::Network, network_model as &mut dyn ReSetAny);
         model_map.insert(PageId::Bluetooth, bluetooth_model as &mut dyn ReSetAny);
 
-        // TODO get plugins?
         let mut plugin_funcs: HashMap<u8, PluginFuncs> = HashMap::new();
         let mut index = 0;
         // TODO
-        //for plugin in load_plugins() {
-        //    let modelfn = plugin.model.clone();
-        //    let model = unsafe { (modelfn)(&ctx.clone(), &mut () as &mut dyn ReSetAny) };
-        //    model_map.insert(PageId::Plugin(index), model);
-        //    plugin_funcs.insert(index as u8, plugin);
-        //    index += 1;
-        //}
+        for plugin in load_plugins() {
+            let modelfn = plugin.model.clone();
+            let model = unsafe { (modelfn)(&ctx.clone(), &mut () as &mut dyn ReSetAny) };
+            model_map.insert(PageId::Plugin(index), model);
+            plugin_funcs.insert(index as u8, plugin);
+            index += 1;
+        }
         (
             Self {
                 sender: SenderOrNone::None,
@@ -615,10 +609,7 @@ impl ReSet {
                         Ok(view) => {
                             Ok(view.map(move |msg| ReSetMessage::SubPluginMsg(id, Arc::new(msg))))
                         }
-                        // TODO prob better in a different way
-                        Err(err) => Err(create_error(
-                            err.downcast_ref::<ReSetError>().unwrap().to_string(),
-                        )),
+                        Err(err) => Err(err),
                     }
                 }
             }))

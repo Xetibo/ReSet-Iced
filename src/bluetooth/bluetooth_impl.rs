@@ -6,6 +6,7 @@ use iced::{
     Element, Length, Task,
 };
 use oxiced::widgets::oxi_button::ButtonVariant;
+use re_set_lib::utils::error::ReSetError;
 use zbus::proxy::SignalStream;
 
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
         loading_spinner::Circular,
         text::{subtitle, title},
     },
-    utils::{to_object_map, ReSetError, TPage},
+    utils::{to_object_map, TPage},
     ReSetMessage,
 };
 

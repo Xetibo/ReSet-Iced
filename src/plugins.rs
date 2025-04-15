@@ -2,10 +2,13 @@ use std::{fs::create_dir, io::ErrorKind, path::PathBuf, sync::atomic::AtomicBool
 
 use iced::{Element, Task};
 use once_cell::sync::Lazy;
-use re_set_lib::create_config_directory;
+use re_set_lib::{
+    create_config_directory,
+    utils::{any::ReSetAny, error::ReSetError},
+};
 use zbus::proxy::SignalStream;
 
-use crate::{any::ReSetAny, PluginFuncs};
+use crate::PluginFuncs;
 
 pub static LIBS_LOADED: AtomicBool = AtomicBool::new(false);
 pub static LIBS_LOADING: AtomicBool = AtomicBool::new(false);
@@ -86,16 +89,14 @@ pub fn load_plugins() -> Vec<PluginFuncs> {
                 libloading::Symbol<
                     unsafe extern "C" fn(
                         data: &dyn ReSetAny,
-                    ) -> Result<
-                        Element<&'static mut dyn ReSetAny>,
-                        &'static mut dyn ReSetAny,
-                    >,
+                    )
+                        -> Result<Element<&'static mut dyn ReSetAny>, ReSetError>,
                 >,
                 libloading::Error,
             > = lib.get(b"view");
             let signals: Result<
                 libloading::Symbol<
-                    unsafe extern "C" fn(conn: &zbus::Connection) -> SignalStream<'static>,
+                    unsafe extern "C" fn(conn: &zbus::Connection) -> Option<SignalStream<'static>>,
                 >,
                 libloading::Error,
             > = lib.get(b"signals");
@@ -104,8 +105,7 @@ pub fn load_plugins() -> Vec<PluginFuncs> {
                     unsafe extern "C" fn(
                         sender: &mut dyn ReSetAny,
                         signals: &mut SignalStream<'static>,
-                    )
-                        -> Result<(), &'static mut dyn ReSetAny>,
+                    ) -> Result<(), ReSetError>,
                 >,
                 libloading::Error,
             > = lib.get(b"watch_signals");
@@ -130,7 +130,8 @@ pub fn load_plugins() -> Vec<PluginFuncs> {
                         watch_signals,
                     });
                 }
-                (_, _, _, _, _, _, _) => {
+                (enter, leave, model, update, view, signals, watch_signals) => {
+                    dbg!(enter, leave, model, update, view, signals, watch_signals);
                     panic!("plugin could not be loaded")
                 }
             }

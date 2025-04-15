@@ -5,12 +5,13 @@ use iced::{
     widget::Column,
     Element, Length, Task,
 };
+use re_set_lib::utils::error::ReSetError;
 use zbus::{proxy::SignalStream, zvariant::OwnedObjectPath, Connection};
 
 use crate::{
     bluetooth::dbus_interface::TPath,
     components::{text::title, wifi_card::WifiCard},
-    utils::{to_object_map, ReSetError, TPage},
+    utils::{to_object_map, TPage},
     ReSetMessage,
 };
 

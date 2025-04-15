@@ -1,10 +1,8 @@
 use iced::{Element, Task};
+use re_set_lib::utils::error::ReSetError;
 use zbus::Connection;
 
-use crate::{
-    utils::{ReSetError, TPage},
-    ReSetMessage,
-};
+use crate::{utils::TPage, ReSetMessage};
 
 use super::wireless_impl::{WirelessModel, WirelessMsg};
 

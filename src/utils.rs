@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::{self},
-};
+use std::collections::HashMap;
 
 use crate::{bluetooth::dbus_interface::TPath, components::text::error_text};
 use iced::{
@@ -9,6 +6,7 @@ use iced::{
     widget::{column, container::Style},
     Element, Task, Theme,
 };
+use re_set_lib::utils::error::ReSetError;
 use zbus::{zvariant::OwnedObjectPath, Connection};
 
 use crate::ReSetMessage;
@@ -32,28 +30,6 @@ pub trait TPage<T, S, A> {
     async fn new(ctx: &Connection, additional_data: A) -> Result<S, ReSetError>;
     async fn update(&mut self, msg: T) -> Option<Task<ReSetMessage>>;
     fn view(&self) -> Result<Element<ReSetMessage>, ReSetError>;
-}
-
-pub type ReSetError = Box<dyn TReSetError>;
-
-pub trait TReSetError: fmt::Debug + fmt::Display + Send + Sync + 'static {}
-
-pub fn create_error(err: impl TReSetError) -> ReSetError {
-    Box::new(err)
-}
-
-impl TReSetError for zbus::Error {}
-impl From<zbus::Error> for ReSetError {
-    fn from(value: zbus::Error) -> Self {
-        create_error(value)
-    }
-}
-
-impl TReSetError for String {}
-impl From<String> for ReSetError {
-    fn from(value: String) -> Self {
-        create_error(value)
-    }
 }
 
 pub fn display_view_or_error(

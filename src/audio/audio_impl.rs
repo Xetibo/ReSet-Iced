@@ -5,6 +5,7 @@ use iced::{
     widget::{column, row},
     Element, Length, Task,
 };
+use re_set_lib::utils::error::ReSetError;
 use zbus::{proxy::SignalStream, Connection};
 
 use crate::{
@@ -14,7 +15,7 @@ use crate::{
         select_row::picklist_to_row,
         text::title,
     },
-    utils::{ignore, ReSetError, TPage},
+    utils::{ignore, TPage},
     ReSetMessage,
 };
 

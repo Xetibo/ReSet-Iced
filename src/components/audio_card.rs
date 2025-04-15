@@ -10,10 +10,10 @@ use oxiced::widgets::{
     oxi_button::{button, ButtonVariant},
     oxi_slider,
 };
+use re_set_lib::utils::error::ReSetError;
 
 use crate::{
     audio::{audio_impl::AudioMsg, dbus_interface::TAudioObject},
-    utils::ReSetError,
     ReSetMessage,
 };
 
