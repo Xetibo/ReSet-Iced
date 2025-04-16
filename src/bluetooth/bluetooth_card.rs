@@ -42,7 +42,7 @@ fn create_button<'a>(
         ),
     };
     // TODO beforepr should the empty entries be removed??
-    if value.alias == "" {
+    if value.alias.is_empty() {
         None
     } else {
         Some(

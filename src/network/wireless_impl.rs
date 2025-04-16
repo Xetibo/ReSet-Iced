@@ -30,15 +30,6 @@ pub struct WirelessModel<'a> {
     enabled: bool,
 }
 
-pub fn to_access_point_map(access_points: Vec<AccessPoint>) -> HashMap<Vec<u8>, AccessPoint> {
-    let mut map = HashMap::new();
-    for element in access_points.into_iter() {
-        let ssid = element.ssid.clone();
-        map.insert(ssid, element);
-    }
-    map
-}
-
 impl<'a> TPage<WirelessMsg, WirelessModel<'a>, ()> for WirelessModel<'a> {
     fn enter() -> Task<ReSetMessage> {
         Task::done(ReSetMessage::SubMsgNetwork(NetworkMsg::SubMsgWireless(
@@ -260,9 +251,9 @@ pub enum WirelessMsg {
     WifiEditPasswordText(OwnedObjectPath, String),
 }
 
-impl Into<ReSetMessage> for WirelessMsg {
-    fn into(self) -> ReSetMessage {
-        ReSetMessage::SubMsgNetwork(NetworkMsg::SubMsgWireless(self))
+impl From<WirelessMsg> for ReSetMessage {
+    fn from(val: WirelessMsg) -> Self {
+        ReSetMessage::SubMsgNetwork(NetworkMsg::SubMsgWireless(val))
     }
 }
 

@@ -1,34 +1,18 @@
-
 use iced::{
     border::Radius,
     color,
     widget::{
         button::{Status, Style},
         container, row,
-    }, Border, Element, Length, Padding, Shadow, Theme, Vector,
+    },
+    Border, Element, Length, Padding, Shadow, Theme, Vector,
 };
 use oxiced::widgets::common::{darken_color, lighten_color};
+use re_set_lib::utils::iced_sidebar::{EntryButton, EntryButtonLevel, EntryCategory};
 
 use crate::ReSetMessage;
 
-use super::icons::{icon_widget, Icon};
-
-pub enum EntryButtonLevel {
-    TopLevel,
-    SubLevel,
-}
-
-pub struct EntryButton {
-    pub title: &'static str,
-    pub icon: Option<Icon>,
-    pub msg: ReSetMessage,
-    pub level: EntryButtonLevel,
-}
-
-pub struct EntryCategory {
-    pub main_entry: EntryButton,
-    pub sub_entries: Vec<EntryButton>,
-}
+use super::icons::icon_widget_from_plain_path;
 
 // TODO beforepr deduplicate from oxiced
 fn disabled(style: Style) -> Style {
@@ -73,10 +57,10 @@ fn side_bar_button_style(theme: &Theme, status: Status) -> Style {
     }
 }
 
-fn icon_and_text<'a>(text: &'static str, icon_opt: Option<Icon>) -> Element<'a, ReSetMessage> {
+fn icon_and_text<'a>(text: &'static str, icon_opt: Option<String>) -> Element<'a, ReSetMessage> {
     let icon: Vec<Element<'_, ReSetMessage>> = icon_opt
         .into_iter()
-        .map(icon_widget)
+        .map(icon_widget_from_plain_path)
         .map(|value| value.width(Length::Shrink).into())
         .collect();
     iced::widget::Row::with_children(icon)
@@ -88,14 +72,14 @@ fn icon_and_text<'a>(text: &'static str, icon_opt: Option<Icon>) -> Element<'a, 
 fn create_button<'a>(entry: EntryButton) -> Element<'a, ReSetMessage> {
     match entry.level {
         EntryButtonLevel::TopLevel => iced::widget::button(icon_and_text(entry.title, entry.icon))
-            .on_press(entry.msg)
+            .on_press(entry.msg.downcast_ref::<ReSetMessage>().unwrap().clone())
             .style(side_bar_button_style)
             .padding(Padding::new(10.0).top(10).bottom(10))
             .width(Length::Fill)
             .into(),
         EntryButtonLevel::SubLevel => {
             row!(iced::widget::button(icon_and_text(entry.title, entry.icon))
-                .on_press(entry.msg)
+                .on_press(entry.msg.downcast_ref::<ReSetMessage>().unwrap().clone())
                 .style(side_bar_button_style)
                 .padding(Padding::new(20.0).top(10).bottom(10))
                 .width(Length::Fill))

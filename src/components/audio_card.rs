@@ -168,7 +168,7 @@ where
     T: TAudioObject + TCardUser,
 {
     let object_opt = object_map.get(&index);
-    if let None = object_opt {
+    if object_opt.is_none() {
         return Err(String::from("TODO failed to get audio object for card").into());
     }
     let object = object_opt.unwrap().clone();

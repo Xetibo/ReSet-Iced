@@ -32,6 +32,15 @@ pub enum Icon {
     ChevronLeft,
     ChevronRight,
     Refresh,
+    SidebarOpen,
+    SidebarClose,
+    Exit,
+}
+
+impl From<Icon> for String {
+    fn from(icon: Icon) -> Self {
+        path(icon)
+    }
 }
 
 fn path(icon: Icon) -> String {
@@ -40,4 +49,8 @@ fn path(icon: Icon) -> String {
 
 pub fn icon_widget<'a>(icon: Icon) -> iced::widget::Svg<'a> {
     oxiced::widgets::oxi_svg::svg_from_path(SvgStyleVariant::Primary, path(icon))
+}
+
+pub fn icon_widget_from_plain_path<'a>(plain_path: impl Into<String>) -> iced::widget::Svg<'a> {
+    oxiced::widgets::oxi_svg::svg_from_path(SvgStyleVariant::Primary, plain_path.into())
 }

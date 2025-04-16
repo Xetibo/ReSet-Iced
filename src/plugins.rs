@@ -4,7 +4,7 @@ use iced::{Element, Task};
 use once_cell::sync::Lazy;
 use re_set_lib::{
     create_config_directory,
-    utils::{any::ReSetAny, error::ReSetError},
+    utils::{any::ReSetAny, error::ReSetError, iced_sidebar::EntryCategory},
 };
 use zbus::proxy::SignalStream;
 
@@ -109,8 +109,21 @@ pub fn load_plugins() -> Vec<PluginFuncs> {
                 >,
                 libloading::Error,
             > = lib.get(b"watch_signals");
+            let sidebar_entries: Result<
+                libloading::Symbol<unsafe extern "C" fn() -> EntryCategory>,
+                libloading::Error,
+            > = lib.get(b"sidebar_entries");
 
-            match (enter, leave, model, update, view, signals, watch_signals) {
+            match (
+                enter,
+                leave,
+                model,
+                update,
+                view,
+                signals,
+                watch_signals,
+                sidebar_entries,
+            ) {
                 (
                     Ok(enter),
                     Ok(leave),
@@ -119,6 +132,7 @@ pub fn load_plugins() -> Vec<PluginFuncs> {
                     Ok(view),
                     Ok(signals),
                     Ok(watch_signals),
+                    Ok(sidebar_entries),
                 ) => {
                     plugins.push(PluginFuncs {
                         enter,
@@ -128,10 +142,10 @@ pub fn load_plugins() -> Vec<PluginFuncs> {
                         view,
                         signals,
                         watch_signals,
+                        sidebar_entries,
                     });
                 }
-                (enter, leave, model, update, view, signals, watch_signals) => {
-                    dbg!(enter, leave, model, update, view, signals, watch_signals);
+                _ => {
                     panic!("plugin could not be loaded")
                 }
             }

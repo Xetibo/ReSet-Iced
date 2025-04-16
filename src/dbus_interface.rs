@@ -7,4 +7,9 @@ use zbus::proxy;
 )]
 pub trait ReSetDbus {
     fn register_client(&self, name: &str) -> zbus::Result<bool>;
+    fn unregister_client(&self, name: &str) -> zbus::Result<bool>;
+    fn get_capabilities(&self) -> zbus::Result<Vec<String>>;
+    #[zbus(name = "APIVersion")]
+    fn api_version(&self) -> zbus::Result<String>;
+    fn shutdown(&self) -> zbus::Result<()>;
 }

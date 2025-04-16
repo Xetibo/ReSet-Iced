@@ -7,11 +7,12 @@ use bluetooth::{
     dbus_interface::BluetoothDbusProxy,
 };
 use components::{
-    icons::Icon,
-    sidebar::{sidebar, EntryButton, EntryButtonLevel, EntryCategory},
+    icons::{icon_widget, Icon},
+    sidebar::sidebar,
 };
 use dbus_interface::ReSetDbusProxy;
 use iced::{
+    event,
     futures::{
         self,
         channel::{
@@ -22,9 +23,9 @@ use iced::{
         FutureExt, SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::{row, scrollable},
+    widget::{column, container, mouse_area, opaque, row, scrollable, stack},
     window::Settings,
-    Element, Font, Size, Subscription, Task, Theme,
+    Color, Element, Event, Font, Length, Size, Subscription, Task, Theme,
 };
 use libloading::Symbol;
 use network::{
@@ -32,9 +33,16 @@ use network::{
     network_impl::{NetworkModel, NetworkMsg},
     wireless_impl::{watch_wireless_dbus_signals, WirelessModel},
 };
-use plugins::{load_plugins, SETUP_LIBS, SETUP_PLUGIN_DIR};
-use re_set_lib::{utils::any::ReSetAny, write_log_to_file};
-use re_set_lib::{utils::error::ReSetError, LOG};
+use oxiced::widgets::oxi_button::{button, ButtonVariant};
+use plugins::{SETUP_LIBS, SETUP_PLUGIN_DIR};
+use re_set_lib::{
+    utils::{any::ReSetAny, iced_sidebar::EntryButton},
+    write_log_to_file,
+};
+use re_set_lib::{
+    utils::{error::ReSetError, iced_sidebar::EntryCategory},
+    LOG,
+};
 use reset_daemon::run_daemon;
 use std::{
     collections::HashMap,
@@ -53,6 +61,9 @@ mod dbus_interface;
 mod network;
 mod plugins;
 mod utils;
+
+const NAME: &str = "ReSet-Iced";
+const COMPATIBLE_API: &str = "2.2.0";
 
 // TODO make this work over C ABI
 //pub struct PluginFuncs2 {
@@ -105,6 +116,7 @@ pub struct PluginFuncs {
             signals: &mut SignalStream<'static>,
         ) -> Result<(), ReSetError>,
     >,
+    pub sidebar_entries: libloading::Symbol<'static, unsafe extern "C" fn() -> EntryCategory>,
 }
 
 unsafe impl Send for PluginFuncs {}
@@ -120,13 +132,13 @@ pub enum PageId {
     Plugin(u8),
 }
 
-impl Into<u8> for PageId {
-    fn into(self) -> u8 {
-        match self {
+impl From<PageId> for u8 {
+    fn from(val: PageId) -> Self {
+        match val {
             PageId::Audio => 0,
             PageId::Network => 1,
             PageId::Bluetooth => 2,
-            PageId::Plugin(id) => 3 + id, // TODO
+            PageId::Plugin(id) => 3 + id,
         }
     }
 }
@@ -137,7 +149,7 @@ impl From<u8> for PageId {
             0 => Self::Audio,
             1 => Self::Bluetooth,
             2 => Self::Network,
-            id => PageId::Plugin(id - 3), // TODO
+            id => PageId::Plugin(id - 3),
         }
     }
 }
@@ -149,8 +161,8 @@ impl PageId {
             PageId::Network => WirelessModel::enter(),
             PageId::Bluetooth => BluetoothModel::enter(),
             PageId::Plugin(id) => unsafe {
-                let leave = plugin_funcs.get(&id).unwrap().enter.clone();
-                let newid = id.clone();
+                let leave = plugin_funcs.get(id).unwrap().enter.clone();
+                let newid = *id;
                 (leave()).map(move |msg: &'static mut dyn ReSetAny| {
                     ReSetMessage::SubPluginMsg(newid, Arc::new(msg))
                 })
@@ -164,8 +176,8 @@ impl PageId {
             PageId::Network => NetworkModel::leave(),
             PageId::Bluetooth => BluetoothModel::leave(),
             PageId::Plugin(id) => unsafe {
-                let leave = plugin_funcs.get(&id).unwrap().leave.clone();
-                let newid = id.clone();
+                let leave = plugin_funcs.get(id).unwrap().leave.clone();
+                let newid = *id;
                 (leave()).map(move |msg: &'static mut dyn ReSetAny| {
                     ReSetMessage::SubPluginMsg(newid, Arc::new(msg))
                 })
@@ -180,11 +192,53 @@ enum SenderOrNone {
 }
 
 struct ReSet {
+    proxy: ReSetDbusProxy<'static>,
     sender: SenderOrNone,
     ctx: Arc<Connection>,
     current_page: PageId,
     model_map: HashMap<PageId, &'static mut dyn ReSetAny>,
     plugin_funcs: HashMap<u8, PluginFuncs>,
+    layout: Layout,
+    sidebar_open: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum VerticalLayout {
+    OneRow,
+    TwoRows,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum HorizontalLayout {
+    ThreeColumnsWithSidebar,
+    TwoColumnsWithSidebar,
+    OneColumnWithSidebar,
+    OneColumn,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Layout {
+    vertical: VerticalLayout,
+    horizontal: HorizontalLayout,
+}
+
+impl From<&Size> for Layout {
+    fn from(size: &Size) -> Self {
+        let vertical = match size.height {
+            0.0..1600.0 => VerticalLayout::OneRow,
+            _ => VerticalLayout::TwoRows,
+        };
+        let horizontal = match size.width {
+            0.0..800.0 => HorizontalLayout::OneColumn,
+            801.0..1600.0 => HorizontalLayout::OneColumnWithSidebar,
+            1601.0..2400.0 => HorizontalLayout::TwoColumnsWithSidebar,
+            _ => HorizontalLayout::ThreeColumnsWithSidebar,
+        };
+        Layout {
+            vertical,
+            horizontal,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -196,6 +250,10 @@ pub enum ReSetMessage {
     SetPage(PageId),
     StartWorker(PageId, Arc<Connection>, HashMap<u8, PluginFuncs>),
     ReceiveSender(Sender<ReSetMessage>),
+    Event(Event),
+    LayoutMsg(Layout),
+    ExpandSidebar(bool),
+    Exit,
 }
 
 impl Clone for ReSetMessage {
@@ -212,6 +270,10 @@ impl Clone for ReSetMessage {
                 Self::StartWorker(*page_id, connection.clone(), plugins.clone())
             }
             ReSetMessage::ReceiveSender(sender) => Self::ReceiveSender(sender.clone()),
+            ReSetMessage::Event(event) => Self::Event(event.clone()),
+            ReSetMessage::LayoutMsg(layout) => Self::LayoutMsg(*layout),
+            ReSetMessage::ExpandSidebar(open) => Self::ExpandSidebar(*open),
+            ReSetMessage::Exit => Self::Exit,
         }
     }
 }
@@ -235,9 +297,11 @@ async fn wrap_daemon(
     loop {
         futures::select! {
             _ = shutdown_future => {
-                break;
+                return;
             },
-            default => daemonfn(output, &mut signals).await.expect("")
+            default => {
+                daemonfn(output, &mut signals).await.expect("")
+            }
         }
     }
 }
@@ -262,7 +326,9 @@ fn wrap_daemon_plugin(
             _ = shutdown_future => {
                 break;
             },
-            default => unsafe {daemonfn(output as &mut dyn ReSetAny, &mut signals).expect("")}
+            default => unsafe {
+                println!("pingpang");
+                daemonfn(output as &mut dyn ReSetAny, &mut signals).expect("")}
         }
     }
 }
@@ -293,7 +359,6 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
                             watch_audio_dbus_signals,
                         )
                         .await;
-                        ()
                     }
                     PageId::Network => {
                         let proxy = WifiDbusProxy::new(&conn).await.expect("no proxy");
@@ -307,7 +372,6 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
                             watch_wireless_dbus_signals,
                         )
                         .await;
-                        ()
                     }
                     PageId::Bluetooth => {
                         let proxy = BluetoothDbusProxy::new(&conn).await.expect("no proxy");
@@ -321,7 +385,6 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
                             watch_bluetooth_dbus_signals,
                         )
                         .await;
-                        ()
                     }
                     PageId::Plugin(id) => {
                         let funcs = plugins.get(&id).unwrap();
@@ -342,16 +405,103 @@ fn some_worker() -> impl Stream<Item = ReSetMessage> {
     })
 }
 
+// TODO
+fn modal<'a, Message>(
+    base: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    on_blur: Message,
+) -> Element<'a, Message>
+where
+    Message: Clone + 'a,
+{
+    let modal_element = opaque(
+        mouse_area(
+            container(opaque(content))
+                .style(|_theme| container::Style {
+                    background: Some(
+                        Color {
+                            a: 0.8,
+                            ..Color::BLACK
+                        }
+                        .into(),
+                    ),
+                    ..container::Style::default()
+                })
+                .align_left(Length::Fill),
+        )
+        .on_press(on_blur),
+    );
+    stack![base.into(), modal_element]
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .into()
+}
+
 impl ReSet {
     fn subscription(&self) -> Subscription<ReSetMessage> {
-        Subscription::run(some_worker)
+        let subs = [
+            Subscription::run(some_worker),
+            event::listen().map(ReSetMessage::Event),
+        ];
+        Subscription::batch(subs)
     }
 
     fn theme(&self) -> Theme {
         oxiced::theme::get_theme()
     }
 
+    async fn setup_daemon() -> Result<ReSetDbusProxy<'static>, iced::Error> {
+        let conn = Connection::session().await.unwrap();
+        let reset_proxy = ReSetDbusProxy::new(&conn).await.unwrap();
+
+        let res = reset_proxy.register_client(NAME).await;
+
+        if res.is_err() {
+            // Start daemon and retry
+            let ready = Arc::new(AtomicBool::new(false));
+            let start = std::time::SystemTime::now();
+            tokio::task::spawn(run_daemon(Some(ready.clone())));
+            while !ready.load(std::sync::atomic::Ordering::SeqCst) {
+                if start.elapsed().unwrap_or(Duration::from_secs(1)) >= Duration::from_secs(1) {
+                    return Err(iced::Error::WindowCreationFailed(Box::from(
+                        "Failed to get daemon",
+                    )));
+                }
+            }
+            let res = reset_proxy.api_version().await;
+            if let Ok(api_version) = res {
+                if api_version != COMPATIBLE_API {
+                    return Err(iced::Error::WindowCreationFailed(Box::from(format!(
+                        "mismatch on api version of daemon: got {} but need {}",
+                        api_version, COMPATIBLE_API
+                    ))));
+                }
+            } else {
+                return Err(iced::Error::WindowCreationFailed(Box::from(
+                    "Could not get api version from daemon",
+                )));
+            }
+            // Second try without any catch, this means there was no way to connect to the daemon
+            reset_proxy
+                .register_client(NAME)
+                .await
+                .expect("Failed to get daemon");
+            LOG!("Using Bundled Daemon")
+        }
+        Ok(reset_proxy)
+    }
+
     fn new() -> (Self, Task<ReSetMessage>) {
+        // TODO how to handle this error without panic?
+        let proxy =
+            block_on(ReSet::setup_daemon()).expect("Could not create a connection to ReSet daemon");
+        // TODO get from initial size instead
+        let layout = Layout {
+            vertical: VerticalLayout::OneRow,
+            horizontal: HorizontalLayout::OneColumnWithSidebar,
+        };
+        let sidebar_open = false;
+
         // TODO beforepr handle error
         let ctx = Arc::new(block_on(Connection::session()).unwrap());
         let audio_context = async || {
@@ -381,23 +531,26 @@ impl ReSet {
         model_map.insert(PageId::Network, network_model as &mut dyn ReSetAny);
         model_map.insert(PageId::Bluetooth, bluetooth_model as &mut dyn ReSetAny);
 
-        let mut plugin_funcs: HashMap<u8, PluginFuncs> = HashMap::new();
-        let mut index = 0;
+        let plugin_funcs: HashMap<u8, PluginFuncs> = HashMap::new();
+        let index = 0;
         // TODO
-        for plugin in load_plugins() {
-            let modelfn = plugin.model.clone();
-            let model = unsafe { (modelfn)(&ctx.clone(), &mut () as &mut dyn ReSetAny) };
-            model_map.insert(PageId::Plugin(index), model);
-            plugin_funcs.insert(index as u8, plugin);
-            index += 1;
-        }
+        //for plugin in load_plugins() {
+        //    let modelfn = plugin.model.clone();
+        //    let model = unsafe { (modelfn)(&ctx.clone(), &mut () as &mut dyn ReSetAny) };
+        //    model_map.insert(PageId::Plugin(index), model);
+        //    plugin_funcs.insert(index as u8, plugin);
+        //    index += 1;
+        //}
         (
             Self {
+                proxy,
                 sender: SenderOrNone::None,
                 ctx: ctx.clone(),
                 current_page: Default::default(),
                 model_map,
                 plugin_funcs,
+                layout,
+                sidebar_open,
             },
             Task::none(),
         )
@@ -405,6 +558,57 @@ impl ReSet {
 
     fn title(&self) -> String {
         String::from("ReSet")
+    }
+
+    fn handle_event(event: &Event) -> Task<ReSetMessage> {
+        match event {
+            Event::Keyboard(keyboard_event) => match keyboard_event {
+                iced::keyboard::Event::KeyPressed {
+                    key,
+                    modified_key,
+                    physical_key,
+                    location,
+                    modifiers,
+                    text,
+                } => Task::none(),
+                iced::keyboard::Event::KeyReleased {
+                    key,
+                    location,
+                    modifiers,
+                } => Task::none(),
+                iced::keyboard::Event::ModifiersChanged(modifiers) => Task::none(),
+            },
+            Event::Mouse(mouse_event) => match mouse_event {
+                iced::mouse::Event::CursorEntered => Task::none(),
+                iced::mouse::Event::CursorLeft => Task::none(),
+                iced::mouse::Event::CursorMoved { position } => Task::none(),
+                iced::mouse::Event::ButtonPressed(button) => Task::none(),
+                iced::mouse::Event::ButtonReleased(button) => Task::none(),
+                iced::mouse::Event::WheelScrolled { delta } => Task::none(),
+            },
+            Event::Window(window_event) => match window_event {
+                iced::window::Event::Opened { position, size } => Task::none(),
+                iced::window::Event::Closed => Task::none(),
+                iced::window::Event::Moved(point) => Task::none(),
+                iced::window::Event::Resized(size) => {
+                    let layout = Layout::from(size);
+                    Task::done(ReSetMessage::LayoutMsg(layout))
+                }
+                iced::window::Event::RedrawRequested(instant) => Task::none(),
+                iced::window::Event::CloseRequested => Task::done(ReSetMessage::Exit),
+                iced::window::Event::Focused => Task::none(),
+                iced::window::Event::Unfocused => Task::none(),
+                iced::window::Event::FileHovered(path_buf) => Task::none(),
+                iced::window::Event::FileDropped(path_buf) => Task::none(),
+                iced::window::Event::FilesHoveredLeft => Task::none(),
+            },
+            Event::Touch(touch_event) => match touch_event {
+                iced::touch::Event::FingerPressed { id, position } => Task::none(),
+                iced::touch::Event::FingerMoved { id, position } => Task::none(),
+                iced::touch::Event::FingerLifted { id, position } => Task::none(),
+                iced::touch::Event::FingerLost { id, position } => Task::none(),
+            },
+        }
     }
 
     fn update_submodel<Model, Message, A>(
@@ -499,122 +703,205 @@ impl ReSet {
                 self.sender = SenderOrNone::Sender(sender);
                 Task::none()
             }
+            ReSetMessage::Event(event) => Self::handle_event(&event),
+            ReSetMessage::LayoutMsg(layout) => {
+                self.layout = layout;
+                Task::none()
+            }
+            ReSetMessage::ExpandSidebar(open) => {
+                self.sidebar_open = open;
+                Task::none()
+            }
+            ReSetMessage::Exit => {
+                block_on(async move {
+                    let _ = self.proxy.register_client(NAME).await;
+                });
+                iced::exit::<ReSetMessage>()
+            }
         }
     }
 
-    fn view(&self) -> Element<ReSetMessage> {
-        let entries = {
-            let audio_sub = vec![
-                EntryButton {
-                    title: "Input",
-                    icon: Some(Icon::Mic),
-                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Input)),
-                    level: EntryButtonLevel::SubLevel,
-                },
-                EntryButton {
-                    title: "Output",
-                    icon: Some(Icon::Volume),
-                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Output)),
-                    level: EntryButtonLevel::SubLevel,
-                },
-                EntryButton {
-                    title: "Cards",
-                    icon: Some(Icon::AudioCards),
-                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(AudioVariant::Cards)),
-                    level: EntryButtonLevel::SubLevel,
-                },
-                EntryButton {
-                    title: "Devices",
-                    icon: Some(Icon::AudioDevices),
-                    msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
+    fn sidebar_elements(&self) -> Vec<EntryCategory> {
+        let audio_sub =
+            vec![
+                EntryButton::sub_level(
+                    "Input",
+                    Some(Icon::Mic),
+                    Box::new(&ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
+                        AudioVariant::Input,
+                    )) as &dyn ReSetAny),
+                ),
+                EntryButton::sub_level(
+                    "Output",
+                    Some(Icon::Volume),
+                    Box::new(&ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
+                        AudioVariant::Output,
+                    )) as &dyn ReSetAny),
+                ),
+                EntryButton::sub_level(
+                    "Cards",
+                    Some(Icon::AudioCards),
+                    Box::new(&ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
+                        AudioVariant::Cards,
+                    )) as &dyn ReSetAny),
+                ),
+                EntryButton::sub_level(
+                    "Devices",
+                    Some(Icon::AudioDevices),
+                    Box::new(&ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
                         AudioVariant::Devices,
-                    )),
-                    level: EntryButtonLevel::SubLevel,
-                },
+                    )) as &dyn ReSetAny),
+                ),
             ];
-            let base_audio = EntryButton {
-                title: "Audio",
-                icon: Some(Icon::Audio),
-                msg: ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
-                    AudioVariant::InputAndOutput,
-                )),
-                level: EntryButtonLevel::TopLevel,
-            };
-            let audio = EntryCategory {
-                main_entry: base_audio,
-                sub_entries: audio_sub,
-            };
-            let network = EntryCategory {
-                main_entry: EntryButton {
-                    title: "Network",
-                    icon: Some(Icon::Wifi),
-                    msg: ReSetMessage::SetPage(PageId::Network),
-                    level: EntryButtonLevel::TopLevel,
-                },
-                sub_entries: Vec::new(),
-            };
-            let bluetooth = EntryCategory {
-                main_entry: EntryButton {
-                    title: "Bluetooth",
-                    icon: Some(Icon::Bluetooth),
-                    msg: ReSetMessage::SetPage(PageId::Bluetooth),
-                    level: EntryButtonLevel::TopLevel,
-                },
-                sub_entries: Vec::new(),
-            };
-            let plugin = EntryCategory {
-                main_entry: EntryButton {
-                    title: "Plugin",
-                    icon: None,
-                    msg: ReSetMessage::SetPage(PageId::Plugin(0)),
-                    level: EntryButtonLevel::TopLevel,
-                },
-                sub_entries: Vec::new(),
-            };
-            vec![audio, network, bluetooth, plugin]
+        let base_audio = EntryButton::top_level(
+            "Audio",
+            Some(Icon::Audio),
+            Box::new(&ReSetMessage::SubMsgAudio(AudioMsg::SetAudioVariant(
+                AudioVariant::InputAndOutput,
+            )) as &dyn ReSetAny),
+        );
+        let audio = EntryCategory {
+            main_entry: base_audio,
+            sub_entries: audio_sub,
         };
-        row!(
-            // TODO beforepr set audio and network
-            sidebar(entries),
-            // TODO beforepr make a wrapper over everything ->
-            // 3 views  -> 1 box without sidebar -> 1 box with sidebar -> 2 boxes with sidebar
-            scrollable(display_view_or_error(match self.current_page {
-                PageId::Audio => self
-                    .model_map
-                    .get(&PageId::Audio)
-                    .unwrap()
-                    .downcast_ref::<AudioModel<'_>>()
-                    .unwrap()
-                    .view(),
-                PageId::Network => self
-                    .model_map
-                    .get(&PageId::Network)
-                    .unwrap()
-                    .downcast_ref::<NetworkModel<'_>>()
-                    .unwrap()
-                    .view(),
-                PageId::Bluetooth => self
-                    .model_map
-                    .get(&PageId::Bluetooth)
-                    .unwrap()
-                    .downcast_ref::<BluetoothModel<'_>>()
-                    .unwrap()
-                    .view(),
-                PageId::Plugin(id) => {
-                    let plugin = self.plugin_funcs.get(&id).unwrap();
-                    let model = self.model_map.get(&PageId::Plugin(id)).unwrap();
-                    let view_func = plugin.view.clone();
-                    let view_res = unsafe { (view_func)(model) };
-                    match view_res {
-                        Ok(view) => {
-                            Ok(view.map(move |msg| ReSetMessage::SubPluginMsg(id, Arc::new(msg))))
-                        }
-                        Err(err) => Err(err),
+        let network = EntryCategory {
+            main_entry: EntryButton::top_level(
+                "Network",
+                Some(Icon::Wifi),
+                Box::new(&ReSetMessage::SetPage(PageId::Network) as &dyn ReSetAny),
+            ),
+            sub_entries: Vec::new(),
+        };
+        let bluetooth = EntryCategory {
+            main_entry: EntryButton::top_level(
+                "Bluetooth",
+                Some(Icon::Bluetooth),
+                Box::new(&ReSetMessage::SetPage(PageId::Bluetooth) as &dyn ReSetAny),
+            ),
+            sub_entries: Vec::new(),
+        };
+        let mut entries = vec![audio, network, bluetooth];
+        unsafe {
+            let mut plugin_entries: Vec<EntryCategory> = self
+                .plugin_funcs
+                .clone()
+                .iter()
+                .map(|funcs| (funcs.1.sidebar_entries)())
+                .collect();
+            entries.append(&mut plugin_entries);
+        }
+        entries
+    }
+
+    fn top_row(&self) -> Element<ReSetMessage> {
+        // TODO use icons
+        let close_button: Element<'_, ReSetMessage> = container(
+            button(
+                icon_widget(Icon::Exit)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+                ButtonVariant::Primary,
+            )
+            .on_press(ReSetMessage::Exit)
+            .width(Length::Fixed(40.0))
+            .height(Length::Fixed(40.0)),
+        )
+        .align_right(Length::Fill)
+        .into();
+        let sidebar_button: Element<'_, ReSetMessage> = match self.layout.horizontal {
+            HorizontalLayout::OneColumn => button(
+                match self.sidebar_open {
+                    true => icon_widget(Icon::SidebarOpen)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                    false => icon_widget(Icon::SidebarClose)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                },
+                ButtonVariant::Primary,
+            )
+            .on_press(ReSetMessage::ExpandSidebar(!self.sidebar_open))
+            .width(Length::Fixed(40.0))
+            .height(Length::Fixed(40.0))
+            .into(),
+            _ => row!().into(),
+        };
+        row!(sidebar_button, close_button)
+            .height(Length::Fixed(50.0))
+            .width(Length::Fill)
+            .padding(5)
+            .into()
+    }
+
+    fn main_element(&self) -> Element<ReSetMessage> {
+        scrollable(display_view_or_error(match self.current_page {
+            PageId::Audio => self
+                .model_map
+                .get(&PageId::Audio)
+                .unwrap()
+                .downcast_ref::<AudioModel<'_>>()
+                .unwrap()
+                .view(),
+            PageId::Network => self
+                .model_map
+                .get(&PageId::Network)
+                .unwrap()
+                .downcast_ref::<NetworkModel<'_>>()
+                .unwrap()
+                .view(),
+            PageId::Bluetooth => self
+                .model_map
+                .get(&PageId::Bluetooth)
+                .unwrap()
+                .downcast_ref::<BluetoothModel<'_>>()
+                .unwrap()
+                .view(),
+            PageId::Plugin(id) => {
+                let plugin = self.plugin_funcs.get(&id).unwrap();
+                let model = self.model_map.get(&PageId::Plugin(id)).unwrap();
+                let view_func = plugin.view.clone();
+                let view_res = unsafe { (view_func)(model) };
+                match view_res {
+                    Ok(view) => {
+                        Ok(view.map(move |msg| ReSetMessage::SubPluginMsg(id, Arc::new(msg))))
+                    }
+                    Err(err) => Err(err),
+                }
+            }
+        }))
+        .into()
+    }
+
+    fn view(&self) -> Element<ReSetMessage> {
+        let sidebar_element = sidebar(self.sidebar_elements());
+        let main_element = self.main_element();
+
+        match self.layout.vertical {
+            VerticalLayout::OneRow => match self.layout.horizontal {
+                HorizontalLayout::ThreeColumnsWithSidebar => {
+                    row!(sidebar_element, column!(self.top_row(), main_element)).into()
+                }
+                HorizontalLayout::TwoColumnsWithSidebar => {
+                    row!(sidebar_element, column!(self.top_row(), main_element)).into()
+                }
+                HorizontalLayout::OneColumnWithSidebar => {
+                    row!(sidebar_element, column!(self.top_row(), main_element)).into()
+                }
+                HorizontalLayout::OneColumn => {
+                    if self.sidebar_open {
+                        modal(
+                            column!(self.top_row(), main_element),
+                            sidebar_element,
+                            ReSetMessage::ExpandSidebar(false),
+                        )
+                    } else {
+                        row!(column!(self.top_row(), main_element)).into()
                     }
                 }
-            }))
-        )
-        .into()
+            },
+
+            VerticalLayout::TwoRows => row!().into(),
+        }
     }
 
     //fn scale_factor(&self) -> f64 {
@@ -624,36 +911,10 @@ impl ReSet {
 
 #[tokio::main]
 pub async fn main() -> Result<(), iced::Error> {
-    let conn = Connection::session().await.unwrap();
-    let reset_proxy = ReSetDbusProxy::new(&conn).await.unwrap();
-
-    let res = reset_proxy.register_client("ReSet-Iced").await;
-
-    if res.is_err() {
-        // Start daemon and retry
-        let ready = Arc::new(AtomicBool::new(false));
-        let start = std::time::SystemTime::now();
-        tokio::task::spawn(run_daemon(Some(ready.clone())));
-        while !ready.load(std::sync::atomic::Ordering::SeqCst) {
-            if start.elapsed().unwrap_or(Duration::from_secs(1)) >= Duration::from_secs(1) {
-                return Err(iced::Error::WindowCreationFailed(Box::from(
-                    "Failed to get daemon",
-                )));
-            }
-        }
-        // Second try without any catch, this means there was no way to connect to the daemon
-        reset_proxy
-            .register_client("ReSet-Iced")
-            .await
-            .expect("Failed to get daemon");
-        LOG!("Using Bundled Daemon")
-    }
-
     let icon = iced::window::icon::from_file("./assets/ReSet.png"); //.ok();
     let icon = if let Ok(icon) = icon {
         Some(icon)
     } else {
-        dbg!(icon.err());
         None
     };
     let window_settings = Settings {
@@ -671,10 +932,10 @@ pub async fn main() -> Result<(), iced::Error> {
         // https://github.com/iced-rs/iced/issues/1944
         icon,
         platform_specific: iced::window::settings::PlatformSpecific {
-            application_id: "ReSet-Iced".into(),
+            application_id: NAME.into(),
             override_redirect: false,
         },
-        exit_on_close_request: true,
+        exit_on_close_request: false,
     };
 
     SETUP_PLUGIN_DIR();

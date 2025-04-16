@@ -258,9 +258,9 @@ pub enum BluetoothMsg {
     SetPageId(BluetoothPageId),
 }
 
-impl Into<ReSetMessage> for BluetoothMsg {
-    fn into(self) -> ReSetMessage {
-        ReSetMessage::SubMsgBluetooth(self)
+impl From<BluetoothMsg> for ReSetMessage {
+    fn from(val: BluetoothMsg) -> Self {
+        ReSetMessage::SubMsgBluetooth(val)
     }
 }
 
