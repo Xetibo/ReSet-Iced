@@ -249,8 +249,8 @@ where
             size: text_size,
             line_height: self.text_line_height,
             font,
-            horizontal_alignment: alignment::Horizontal::Left,
-            vertical_alignment: alignment::Vertical::Center,
+            align_x: text::Alignment::Left,
+            align_y: Vertical::Center,
             shaping: self.text_shaping,
             wrapping: text::Wrapping::default(),
         };
@@ -305,17 +305,17 @@ where
         layout::Node::new(size)
     }
 
-    fn on_event(
+    fn update(
         &mut self,
         tree: &mut Tree,
-        event: Event,
+        event: &iced::Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         _renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
-    ) -> event::Status {
+    ) -> () {
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
@@ -329,8 +329,6 @@ where
                     if let Some(on_close) = &self.on_close {
                         shell.publish(on_close.clone());
                     }
-
-                    event::Status::Captured
                 } else if cursor.is_over(layout.bounds()) {
                     let selected = self.selected.as_ref().map(Borrow::borrow);
 
@@ -344,10 +342,6 @@ where
                     if let Some(on_open) = &self.on_open {
                         shell.publish(on_open.clone());
                     }
-
-                    event::Status::Captured
-                } else {
-                    event::Status::Ignored
                 }
             }
             Event::Mouse(mouse::Event::WheelScrolled {
@@ -371,13 +365,13 @@ where
                     let options = self.options.borrow();
                     let selected = self.selected.as_ref().map(Borrow::borrow);
 
-                    let next_option = if y < 0.0 {
+                    let next_option = if *y < 0.0 {
                         if let Some(selected) = selected {
                             find_next(selected, options.iter())
                         } else {
                             options.first()
                         }
-                    } else if y > 0.0 {
+                    } else if *y > 0.0 {
                         if let Some(selected) = selected {
                             find_next(selected, options.iter().rev())
                         } else {
@@ -390,20 +384,14 @@ where
                     if let Some(next_option) = next_option {
                         shell.publish((self.on_select)(next_option.clone()));
                     }
-
-                    event::Status::Captured
-                } else {
-                    event::Status::Ignored
                 }
             }
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
                 let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
-                state.keyboard_modifiers = modifiers;
-
-                event::Status::Ignored
+                state.keyboard_modifiers = *modifiers;
             }
-            _ => event::Status::Ignored,
+            _ => (),
         }
     }
 
@@ -503,8 +491,8 @@ where
                     line_height,
                     font,
                     bounds: Size::new(bounds.width, f32::from(line_height.to_absolute(size))),
-                    horizontal_alignment: alignment::Horizontal::Right,
-                    vertical_alignment: alignment::Vertical::Center,
+                    align_x: text::Alignment::Right,
+                    align_y: alignment::Vertical::Center,
                     shaping,
                     wrapping: text::Wrapping::default(),
                 },
@@ -538,8 +526,8 @@ where
                         bounds.width - self.padding.horizontal(),
                         f32::from(self.text_line_height.to_absolute(text_size)),
                     ),
-                    horizontal_alignment: alignment::Horizontal::Left,
-                    vertical_alignment: alignment,
+                    align_x: text::Alignment::Left,
+                    align_y: alignment,
                     shaping: self.text_shaping,
                     wrapping: text::Wrapping::default(),
                 },
@@ -583,6 +571,7 @@ where
         tree: &'b mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
+        viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
@@ -614,7 +603,7 @@ where
                 menu = menu.text_size(text_size);
             }
 
-            Some(menu.overlay(layout.position() + translation, bounds.height))
+            Some(menu.overlay(layout.position() + translation, *viewport, bounds.height))
         } else {
             None
         }

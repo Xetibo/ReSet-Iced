@@ -2,7 +2,11 @@ use iced::{
     widget::{column, container, row},
     Element, Length,
 };
-use oxiced::widgets::oxi_button::{button, ButtonVariant};
+use oxiced::widgets::{
+    oxi_button::{button, ButtonVariant},
+    oxi_radio::OxiRadio,
+    oxi_toggler::OxiToggler,
+};
 
 use crate::{
     components::{
@@ -69,7 +73,10 @@ fn create_button<'a>(
                 } else {
                     RowbuttonPosition::Between
                 };
-                rowbutton::style(oxiced::widgets::oxi_button::row_entry(theme, state), at)
+                rowbutton::style(
+                    oxiced::widgets::oxi_button::neutral_button(theme, state),
+                    at,
+                )
             })
             .width(Length::Fill)
             .into(),
@@ -116,19 +123,22 @@ fn card_view<'a>(
     let col = column!(
         row!(
             title(adapter.alias.clone()),
-            oxiced::widgets::oxi_radio::radio("", index, default_index, move |_| wrap(
-                BluetoothMsg::SetBluetoothAdapter(path.clone())
-            ))
+            OxiRadio::new(
+                None::<String>,
+                default_index,
+                index,
+                Some(move |_| wrap(BluetoothMsg::SetBluetoothAdapter(path.clone())))
+            )
         ),
         row!(
             content_text("Powered"),
-            oxiced::widgets::oxi_toggler::toggler(adapter.powered).on_toggle(move |value| wrap(
+            OxiToggler::new(adapter.powered).on_toggle(move |value| wrap(
                 BluetoothMsg::SetBluetoothAdapterEnabled(path1.clone(), value)
             ))
         ),
         row!(
             content_text("Discoverable"),
-            oxiced::widgets::oxi_toggler::toggler(adapter.discoverable).on_toggle(move |value| {
+            OxiToggler::new(adapter.discoverable).on_toggle(move |value| {
                 wrap(BluetoothMsg::SetBluetoothAdapterDiscoverability(
                     path2.clone(),
                     value,
@@ -137,7 +147,7 @@ fn card_view<'a>(
         ),
         row!(
             content_text("Pairable"),
-            oxiced::widgets::oxi_toggler::toggler(adapter.pairable).on_toggle(move |value| wrap(
+            OxiToggler::new(adapter.pairable).on_toggle(move |value| wrap(
                 BluetoothMsg::SetBluetoothAdapterPairability(path3.clone(), value)
             ))
         )

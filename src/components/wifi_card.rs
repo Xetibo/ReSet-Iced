@@ -2,8 +2,9 @@ use std::u8;
 
 use iced::{
     alignment::{Horizontal, Vertical},
-    widget::{column, row},
-    Element, Length,
+    widget::{column, row, text},
+    Alignment, Element,
+    Length::{self, Fill},
 };
 use oxiced::widgets::{
     oxi_button::{self, ButtonVariant},
@@ -13,6 +14,7 @@ use oxiced::widgets::{
 use crate::{
     bluetooth::dbus_interface::TPath,
     network::{dbus_interface::AccessPoint, network_impl::NetworkMsg, wireless_impl::WirelessMsg},
+    utils::OxiPadding,
     ReSetMessage,
 };
 
@@ -61,37 +63,43 @@ impl<'a> WifiCard<'a, ReSetMessage> {
             return None;
         }
         let wifi_content: Element<'_, ReSetMessage> = if self.access_point.modal_open {
-            row!(oxi_text_input::text_input(
-                "Password",
-                &self.access_point.current_password,
-                move |password| {
-                    ReSetMessage::SubMsgNetwork(NetworkMsg::SubMsgWireless(
-                        WirelessMsg::WifiEditPasswordText(self.access_point.path(), password),
-                    ))
-                }
+            row!(
+                oxi_text_input::text_input(
+                    "Password",
+                    &self.access_point.current_password,
+                    move |password| {
+                        ReSetMessage::SubMsgNetwork(NetworkMsg::SubMsgWireless(
+                            WirelessMsg::WifiEditPasswordText(self.access_point.path(), password),
+                        ))
+                    }
+                )
+                .on_submit(self.edit_confirm_msg.clone()),
+                oxi_button::button(text("Confirm"), ButtonVariant::Primary)
+                    .on_press(self.edit_confirm_msg)
             )
-            .on_submit(self.edit_confirm_msg))
-            .height(Length::Fixed(40.0))
+            .spacing(OxiPadding::Medium)
+            .align_y(Alignment::Center)
+            .height(OxiPadding::XLarge)
             .into()
         } else if self.access_point.stored {
             row!(
                 oxi_button::button(icon_widget(Icon::WifiSettings), ButtonVariant::Primary)
                     .on_press(self.edit_msg)
             )
-            .height(Length::Fixed(40.0))
+            .height(OxiPadding::XLarge)
             .into()
         } else {
             row!()
-                .width(Length::Fixed(0.0))
-                .height(Length::Fixed(40.0))
+                .width(OxiPadding::None)
+                .height(OxiPadding::XLarge)
                 .into()
         };
         Some(
             oxi_button::button(
                 column!(
                     row!(svg.width(Length::Shrink), content_text(name), wifi_content)
-                        .padding(5)
-                        .spacing(10)
+                        .padding(OxiPadding::Small)
+                        .spacing(OxiPadding::Medium)
                         .width(Length::Fill)
                         .align_y(Vertical::Center)
                 )
@@ -101,7 +109,7 @@ impl<'a> WifiCard<'a, ReSetMessage> {
             .on_press(self.connection_msg)
             .style(|theme, state| {
                 rowbutton::style(
-                    oxiced::widgets::oxi_button::row_entry(theme, state),
+                    oxiced::widgets::oxi_button::neutral_button(theme, state),
                     RowbuttonPosition::Only,
                 )
             })

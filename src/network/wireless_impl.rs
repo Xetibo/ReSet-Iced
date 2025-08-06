@@ -173,7 +173,7 @@ impl<'a> TPage<WirelessMsg, WirelessModel<'a>, ()> for WirelessModel<'a> {
         None
     }
 
-    fn view(&self) -> Result<Element<ReSetMessage>, ReSetError> {
+    fn view(&self) -> Result<Vec<Element<ReSetMessage>>, ReSetError> {
         let new_ap_cards: Vec<WifiCard<'_, ReSetMessage>> = self
             .new_access_points
             .values()
@@ -219,13 +219,13 @@ impl<'a> TPage<WirelessMsg, WirelessModel<'a>, ()> for WirelessModel<'a> {
         let mut col = Column::new();
         col = col.push(title("Access Points"));
         for card in new_ap_cards {
-            col = col.push_maybe(card.view());
+            col = col.push(card.view());
         }
         col = col.push(title("Known Access Points"));
         for card in known_ap_cards {
-            col = col.push_maybe(card.view());
+            col = col.push(card.view());
         }
-        Ok(col.padding(10).spacing(10).width(Length::Fill).into())
+        Ok(vec![col.padding(10).spacing(10).width(Length::Fill).into()])
     }
 }
 

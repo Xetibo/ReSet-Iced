@@ -7,7 +7,7 @@ use iced::{
     },
     Theme,
 };
-use oxiced::widgets::common::{darken_color, lighten_color};
+use oxiced::utils::color::{darken_color, lighten_color};
 
 // TODO beforepr upstream this to oxiced
 pub fn radio_style(theme: &Theme, status: Status) -> Style {
@@ -22,16 +22,16 @@ pub fn radio_style(theme: &Theme, status: Status) -> Style {
     match status {
         Status::Active { is_selected: true } => Style {
             background: iced::Background::Color(color!(0x89B4FA)),
-            border_color: lighten_color(color!(0x333444)),
+            border_color: lighten_color(&color!(0x333444), 10.0),
             ..style
         },
         Status::Active { is_selected: false } => Style {
             background: iced::Background::Color(color!(0x1E1E2E)),
-            border_color: lighten_color(color!(0x1E1E2E)),
+            border_color: lighten_color(&color!(0x1E1E2E), 10.0),
             ..style
         },
         Status::Hovered { is_selected: _ } => {
-            style.background = iced::Background::Color(darken_color(color!(0x89B4FA)));
+            style.background = iced::Background::Color(darken_color(&color!(0x89B4FA), 10.0));
             style
         }
     }

@@ -272,7 +272,7 @@ impl<'a> TPage<AudioMsg, AudioModel<'a>, ()> for AudioModel<'a> {
     }
 
     // TODO beforepr handle errors
-    fn view(&self) -> Result<Element<ReSetMessage>, ReSetError> {
+    fn view(&self) -> Result<Vec<Element<ReSetMessage>>, ReSetError> {
         let cards = {
             let card_elements: Vec<Element<ReSetMessage>> = self
                 .cards
@@ -304,14 +304,13 @@ impl<'a> TPage<AudioMsg, AudioModel<'a>, ()> for AudioModel<'a> {
             .into()
         };
         let base = match self.audio_variant {
-            AudioVariant::Cards => cards,
-            AudioVariant::Input => input,
-            AudioVariant::Output => output,
-            AudioVariant::InputAndOutput => row![output, input].into(),
-            AudioVariant::Devices => devices,
+            AudioVariant::Cards => vec![cards],
+            AudioVariant::Input => vec![input],
+            AudioVariant::Output => vec![output],
+            AudioVariant::InputAndOutput => vec![output, input],
+            AudioVariant::Devices => vec![devices],
         };
-        // Make an enum to buttons function
-        Ok(column![base].padding(20).into())
+        Ok(base)
     }
 }
 

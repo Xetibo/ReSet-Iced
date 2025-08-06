@@ -154,7 +154,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
         })
     }
 
-    fn view(&self) -> Result<Element<ReSetMessage>, ReSetError> {
+    fn view(&self) -> Result<Vec<Element<ReSetMessage>>, ReSetError> {
         let devices = column!(
             oxiced::widgets::oxi_button::button(
                 row!(
@@ -162,7 +162,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
                     icon_widget(Icon::ChevronRight).width(Length::Shrink)
                 )
                 .width(Length::Fill),
-                ButtonVariant::RowEntry
+                ButtonVariant::Neutral
             )
             .on_press(BluetoothMsg::SetPageId(BluetoothPageId::Adapter).into())
             .width(Length::Fill),
@@ -182,7 +182,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
                     }
                 )
                 .width(Length::Fill),
-                ButtonVariant::RowEntry
+                ButtonVariant::Neutral
             )
             .on_press_maybe(if self.is_scanning {
                 None
@@ -216,7 +216,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
                     icon_widget(Icon::ChevronLeft).width(Length::Shrink)
                 )
                 .width(Length::Fill),
-                ButtonVariant::RowEntry
+                ButtonVariant::Neutral
             )
             .on_press(BluetoothMsg::SetPageId(BluetoothPageId::Devices).into())
             .width(Length::Fill),
@@ -224,10 +224,10 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
         )
         .padding(20)
         .spacing(30);
-        Ok(match self.page_id {
+        Ok(vec![match self.page_id {
             BluetoothPageId::Devices => devices.into(),
             BluetoothPageId::Adapter => adapter.into(),
-        })
+        }])
     }
 }
 

@@ -44,7 +44,7 @@ impl<'a> TPage<NetworkMsg, NetworkModel<'a>, ()> for NetworkModel<'a> {
         })
     }
 
-    fn view(&self) -> Result<Element<ReSetMessage>, ReSetError> {
+    fn view(&self) -> Result<Vec<Element<ReSetMessage>>, ReSetError> {
         match self.current_page {
             NetworkPageId::Wireless => self.wireless_model.view(),
         }

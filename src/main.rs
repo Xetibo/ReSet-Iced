@@ -23,9 +23,11 @@ use iced::{
         FutureExt, SinkExt, Stream, StreamExt,
     },
     stream,
-    widget::{column, container, mouse_area, opaque, row, scrollable, stack},
+    widget::{column, container, mouse_area, opaque, row, scrollable, stack, Column},
     window::Settings,
-    Color, Element, Event, Font, Length, Size, Subscription, Task, Theme,
+    Color, Element, Event, Font,
+    Length::{self, Fill},
+    Size, Subscription, Task, Theme,
 };
 use libloading::Symbol;
 use network::{
@@ -198,45 +200,25 @@ struct ReSet {
     current_page: PageId,
     model_map: HashMap<PageId, &'static mut dyn ReSetAny>,
     plugin_funcs: HashMap<u8, PluginFuncs>,
-    layout: Layout,
+    layout: HorizontalLayout,
     sidebar_open: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum VerticalLayout {
-    OneRow,
-    TwoRows,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum HorizontalLayout {
+pub enum HorizontalLayout {
     ThreeColumnsWithSidebar,
     TwoColumnsWithSidebar,
     OneColumnWithSidebar,
     OneColumn,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Layout {
-    vertical: VerticalLayout,
-    horizontal: HorizontalLayout,
-}
-
-impl From<&Size> for Layout {
+impl From<&Size> for HorizontalLayout {
     fn from(size: &Size) -> Self {
-        let vertical = match size.height {
-            0.0..1600.0 => VerticalLayout::OneRow,
-            _ => VerticalLayout::TwoRows,
-        };
-        let horizontal = match size.width {
+        match size.width {
             0.0..800.0 => HorizontalLayout::OneColumn,
             801.0..1600.0 => HorizontalLayout::OneColumnWithSidebar,
             1601.0..2400.0 => HorizontalLayout::TwoColumnsWithSidebar,
             _ => HorizontalLayout::ThreeColumnsWithSidebar,
-        };
-        Layout {
-            vertical,
-            horizontal,
         }
     }
 }
@@ -251,7 +233,7 @@ pub enum ReSetMessage {
     StartWorker(PageId, Arc<Connection>, HashMap<u8, PluginFuncs>),
     ReceiveSender(Sender<ReSetMessage>),
     Event(Event),
-    LayoutMsg(Layout),
+    LayoutMsg(HorizontalLayout),
     ExpandSidebar(bool),
     Exit,
 }
@@ -327,14 +309,13 @@ fn wrap_daemon_plugin(
                 break;
             },
             default => unsafe {
-                println!("pingpang");
                 daemonfn(output as &mut dyn ReSetAny, &mut signals).expect("")}
         }
     }
 }
 
 fn some_worker() -> impl Stream<Item = ReSetMessage> {
-    stream::channel(100, move |mut output| async move {
+    stream::channel(100, move |mut output: Sender<ReSetMessage>| async move {
         let (sender, mut receiver) = mpsc::channel(100);
         // TODO beforepr handle error
         let _ = output.send(ReSetMessage::ReceiveSender(sender)).await;
@@ -437,6 +418,52 @@ where
         .into()
 }
 
+fn split_elems<'a, Message>(elems: Vec<Element<'a, Message>>, count: i32) -> Element<'a, Message>
+where
+    Message: 'a,
+{
+    fn split_col<'a, Message>(
+        mut elems: Vec<Element<'a, Message>>,
+        split: usize,
+        leftover: &mut usize,
+    ) -> (Vec<Element<'a, Message>>, Vec<Element<'a, Message>>) {
+        if *leftover > 0 {
+            *leftover -= 1;
+            let new = elems.split_off(split + 1);
+            (elems, new)
+        } else {
+            let new = elems.split_off(split);
+            (elems, new)
+        }
+    }
+
+    if elems.len() < 2 {
+        return Column::from_vec(elems).width(Fill).into();
+    }
+    let mut leftover = elems.len() % count as usize;
+    let split = elems.len() / count as usize;
+
+    if count == 2 || elems.len() == 2 {
+        let (first, second) = split_col(elems, split, &mut leftover);
+        row!(
+            Column::from_vec(first).width(Fill),
+            Column::from_vec(second).width(Fill)
+        )
+        .width(Fill)
+        .into()
+    } else {
+        let (first, second_and_third) = split_col(elems, split, &mut leftover);
+        let (second, third) = split_col(second_and_third, split, &mut leftover);
+        row!(
+            Column::from_vec(first).width(Fill),
+            Column::from_vec(second).width(Fill),
+            Column::from_vec(third).width(Fill)
+        )
+        .width(Fill)
+        .into()
+    }
+}
+
 impl ReSet {
     fn subscription(&self) -> Subscription<ReSetMessage> {
         let subs = [
@@ -447,7 +474,7 @@ impl ReSet {
     }
 
     fn theme(&self) -> Theme {
-        oxiced::theme::get_theme()
+        oxiced::theme::theme::get_derived_iced_theme()
     }
 
     async fn setup_daemon() -> Result<ReSetDbusProxy<'static>, iced::Error> {
@@ -496,10 +523,7 @@ impl ReSet {
         let proxy =
             block_on(ReSet::setup_daemon()).expect("Could not create a connection to ReSet daemon");
         // TODO get from initial size instead
-        let layout = Layout {
-            vertical: VerticalLayout::OneRow,
-            horizontal: HorizontalLayout::OneColumnWithSidebar,
-        };
+        let layout = HorizontalLayout::OneColumnWithSidebar;
         let sidebar_open = false;
 
         // TODO beforepr handle error
@@ -575,6 +599,8 @@ impl ReSet {
                     key,
                     location,
                     modifiers,
+                    modified_key,
+                    physical_key,
                 } => Task::none(),
                 iced::keyboard::Event::ModifiersChanged(modifiers) => Task::none(),
             },
@@ -591,7 +617,7 @@ impl ReSet {
                 iced::window::Event::Closed => Task::none(),
                 iced::window::Event::Moved(point) => Task::none(),
                 iced::window::Event::Resized(size) => {
-                    let layout = Layout::from(size);
+                    let layout = HorizontalLayout::from(size);
                     Task::done(ReSetMessage::LayoutMsg(layout))
                 }
                 iced::window::Event::RedrawRequested(instant) => Task::none(),
@@ -608,6 +634,7 @@ impl ReSet {
                 iced::touch::Event::FingerLifted { id, position } => Task::none(),
                 iced::touch::Event::FingerLost { id, position } => Task::none(),
             },
+            Event::InputMethod(event) => Task::none(),
         }
     }
 
@@ -808,7 +835,7 @@ impl ReSet {
         )
         .align_right(Length::Fill)
         .into();
-        let sidebar_button: Element<'_, ReSetMessage> = match self.layout.horizontal {
+        let sidebar_button: Element<'_, ReSetMessage> = match self.layout {
             HorizontalLayout::OneColumn => button(
                 match self.sidebar_open {
                     true => icon_widget(Icon::SidebarOpen)
@@ -833,8 +860,8 @@ impl ReSet {
             .into()
     }
 
-    fn main_element(&self) -> Element<ReSetMessage> {
-        scrollable(display_view_or_error(match self.current_page {
+    fn main_elements(&self) -> Vec<Element<ReSetMessage>> {
+        let main_elements = match self.current_page {
             PageId::Audio => self
                 .model_map
                 .get(&PageId::Audio)
@@ -863,44 +890,73 @@ impl ReSet {
                 let view_res = unsafe { (view_func)(model) };
                 match view_res {
                     Ok(view) => {
-                        Ok(view.map(move |msg| ReSetMessage::SubPluginMsg(id, Arc::new(msg))))
+                        Ok(vec![view.map(move |msg| {
+                            ReSetMessage::SubPluginMsg(id, Arc::new(msg))
+                        })])
                     }
                     Err(err) => Err(err),
                 }
             }
-        }))
-        .into()
+        };
+        display_view_or_error(main_elements)
     }
 
     fn view(&self) -> Element<ReSetMessage> {
         let sidebar_element = sidebar(self.sidebar_elements());
-        let main_element = self.main_element();
+        let main_elements = self.main_elements();
 
-        match self.layout.vertical {
-            VerticalLayout::OneRow => match self.layout.horizontal {
-                HorizontalLayout::ThreeColumnsWithSidebar => {
-                    row!(sidebar_element, column!(self.top_row(), main_element)).into()
-                }
-                HorizontalLayout::TwoColumnsWithSidebar => {
-                    row!(sidebar_element, column!(self.top_row(), main_element)).into()
-                }
-                HorizontalLayout::OneColumnWithSidebar => {
-                    row!(sidebar_element, column!(self.top_row(), main_element)).into()
-                }
-                HorizontalLayout::OneColumn => {
-                    if self.sidebar_open {
-                        modal(
-                            column!(self.top_row(), main_element),
-                            sidebar_element,
-                            ReSetMessage::ExpandSidebar(false),
+        match self.layout {
+            HorizontalLayout::ThreeColumnsWithSidebar => row!(
+                sidebar_element,
+                column!(
+                    self.top_row(),
+                    scrollable(split_elems(main_elements, 3)).width(Fill)
+                )
+                .width(Fill)
+            )
+            .width(Fill)
+            .into(),
+            HorizontalLayout::TwoColumnsWithSidebar => row!(
+                sidebar_element,
+                column!(
+                    self.top_row(),
+                    scrollable(split_elems(main_elements, 2)).width(Fill)
+                )
+                .width(Fill)
+            )
+            .width(Fill)
+            .into(),
+            HorizontalLayout::OneColumnWithSidebar => row!(
+                sidebar_element,
+                column!(
+                    self.top_row(),
+                    scrollable(Column::from_vec(main_elements).width(Fill)).width(Fill)
+                )
+                .width(Fill)
+            )
+            .width(Fill)
+            .into(),
+            HorizontalLayout::OneColumn => {
+                if self.sidebar_open {
+                    modal(
+                        column!(
+                            self.top_row(),
+                            scrollable(Column::from_vec(main_elements).width(Fill)).width(Fill)
                         )
-                    } else {
-                        row!(column!(self.top_row(), main_element)).into()
-                    }
+                        .width(Fill),
+                        sidebar_element,
+                        ReSetMessage::ExpandSidebar(false),
+                    )
+                } else {
+                    row!(column!(
+                        self.top_row(),
+                        scrollable(Column::from_vec(main_elements).width(Fill)).width(Fill)
+                    )
+                    .width(Fill))
+                    .width(Fill)
+                    .into()
                 }
-            },
-
-            VerticalLayout::TwoRows => row!().into(),
+            }
         }
     }
 
@@ -909,8 +965,7 @@ impl ReSet {
     //}
 }
 
-#[tokio::main]
-pub async fn main() -> Result<(), iced::Error> {
+pub fn main() -> Result<(), iced::Error> {
     let icon = iced::window::icon::from_file("./assets/ReSet.png"); //.ok();
     let icon = if let Ok(icon) = icon {
         Some(icon)
@@ -936,15 +991,19 @@ pub async fn main() -> Result<(), iced::Error> {
             override_redirect: false,
         },
         exit_on_close_request: false,
+        maximized: false,
+        fullscreen: false,
     };
 
     SETUP_PLUGIN_DIR();
     SETUP_LIBS();
 
-    iced::application(ReSet::title, ReSet::update, ReSet::view)
+    iced::application(ReSet::new, ReSet::update, ReSet::view)
+        .title(ReSet::title)
         .window(window_settings)
         .theme(ReSet::theme)
         .default_font(Font::with_name("Adwaita Sans"))
         .subscription(ReSet::subscription)
-        .run_with(ReSet::new)
+        .exit_on_close_request(true)
+        .run()
 }

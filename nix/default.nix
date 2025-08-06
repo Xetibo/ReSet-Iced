@@ -13,7 +13,6 @@
   libclang,
   glib,
   pango,
-
   cargo,
   cargo-watch,
   rustc,
@@ -28,8 +27,7 @@
   libXi,
   libXcursor,
   ...
-}:
-let
+}: let
   cargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
   libPath = lib.makeLibraryPath [
     libGL
@@ -39,58 +37,62 @@ let
     libclang
   ];
 in
-rustPlatform.buildRustPackage rec {
-  pname = cargoToml.package.name;
-  version = cargoToml.package.version;
+  rustPlatform.buildRustPackage rec {
+    pname = cargoToml.package.name;
+    version = cargoToml.package.version;
 
-  src = ../.;
+    src = ../.;
 
-  buildInputs = [
-    pkg-config
-    gtk4
-    gtk4-layer-shell
-    libadwaita
-    dbus
-    libGL
-    libxkbcommon
-    wayland
-    libclang
-    glib
-    pango
-  ];
+    buildInputs = [
+      pkg-config
+      gtk4
+      gtk4-layer-shell
+      libadwaita
+      dbus
+      libGL
+      libxkbcommon
+      wayland
+      libclang
+      glib
+      pango
+    ];
 
-  cargoLock = {
-    inherit lockFile;
-    outputHashes = {
-      "re_set-lib-5.2.5" = "";
-      "reset_daemon-2.2.0" = "";
-      "oxiced-0.1.0" = "";
+    cargoLock = {
+      inherit lockFile;
+      outputHashes = {
+        "re_set-lib-5.2.5" = "";
+        "reset_daemon-2.2.0" = "";
+        # "oxiced-0.1.0" = "";
+        "dpi-0.1.1" = "";
+        "cryoglyph-0.1.0" = "";
+        "iced-0.14.0-dev" = "";
+        "iced_exdevtools-0.14.0-dev" = "";
+        "oxiced-0.5.1" = "";
+      };
     };
-  };
 
-  nativeBuildInputs = [
-    pkg-config
-    #wrapGAppsHook4
-    #(rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
-    wayland
-    cargo
-    cargo-watch
-    rustc
-    rust-analyzer
-    clippy
-    libGL
-    libxkbcommon
-    libclang
-    glib
-    pango
-  ];
+    nativeBuildInputs = [
+      pkg-config
+      #wrapGAppsHook4
+      #(rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
+      wayland
+      cargo
+      cargo-watch
+      rustc
+      rust-analyzer
+      clippy
+      libGL
+      libxkbcommon
+      libclang
+      glib
+      pango
+    ];
 
-  copyLibs = true;
-  LD_LIBRARY_PATH = libPath;
-  LIBCLANG_PATH = "${libclang.lib}/lib";
+    copyLibs = true;
+    LD_LIBRARY_PATH = libPath;
+    LIBCLANG_PATH = "${libclang.lib}/lib";
 
-  postFixup =
-    let
+    postFixup = let
       libPath = lib.makeLibraryPath [
         libGL
         vulkan-loader
@@ -102,23 +104,22 @@ rustPlatform.buildRustPackage rec {
         libXi
         libXcursor
       ];
-    in
-    ''
+    in ''
       patchelf --set-rpath "${libPath}" "$out/bin/reset"
     '';
 
-  postInstall = ''
-        # TODO beforepr add all regular icons as well
-    	install -D --mode=444 $src/${pname}.desktop $out/share/applications/${pname}.desktop
-    	install -D --mode=444 $src/src/resources/icons/${pname}.svg $out/share/pixmaps/${pname}.svg
-  '';
+    postInstall = ''
+         # TODO beforepr add all regular icons as well
+      install -D --mode=444 $src/${pname}.desktop $out/share/applications/${pname}.desktop
+      install -D --mode=444 $src/src/resources/icons/${pname}.svg $out/share/pixmaps/${pname}.svg
+    '';
 
-  meta = with lib; {
-    description = "A settings manager for Linux";
-    homepage = "https://github.com/Xetibo/ReSet-Iced";
-    changelog = "https://github.com/Xetibo/ReSet-Iced/releases/tag/${version}"; # TODO beforepr
-    license = licenses.gpl3;
-    maintainers = with maintainers; [ DashieTM ];
-    mainProgram = "reset";
-  };
-}
+    meta = with lib; {
+      description = "A settings manager for Linux";
+      homepage = "https://github.com/Xetibo/ReSet-Iced";
+      changelog = "https://github.com/Xetibo/ReSet-Iced/releases/tag/${version}"; # TODO beforepr
+      license = licenses.gpl3;
+      maintainers = with maintainers; [DashieTM];
+      mainProgram = "reset";
+    };
+  }

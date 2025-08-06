@@ -7,7 +7,7 @@ use iced::{
     },
     Border, Element, Length, Padding, Shadow, Theme, Vector,
 };
-use oxiced::widgets::common::{darken_color, lighten_color};
+use oxiced::utils::color::{darken_color, lighten_color};
 use re_set_lib::utils::iced_sidebar::{EntryButton, EntryButtonLevel, EntryCategory};
 
 use crate::ReSetMessage;
@@ -35,22 +35,27 @@ fn side_bar_button_style(theme: &Theme, status: Status) -> Style {
             radius: Radius::from(10),
         },
         shadow: Shadow {
-            color: darken_color(color!(0x181825)),
+            color: darken_color(&color!(0x181825), 10.0),
             offset: Vector { x: 0.2, y: 0.2 },
             blur_radius: 2.0,
         },
+        snap: true,
     };
 
     match status {
         Status::Active => base,
         Status::Pressed => Style {
-            background: Some(iced::Background::Color(lighten_color(lighten_color(
-                color!(0x181825),
-            )))),
+            background: Some(iced::Background::Color(lighten_color(
+                &lighten_color(&color!(0x181825), 10.0),
+                10.0,
+            ))),
             ..base
         },
         Status::Hovered => Style {
-            background: Some(iced::Background::Color(lighten_color(color!(0x181825)))),
+            background: Some(iced::Background::Color(lighten_color(
+                &color!(0x181825),
+                10.0,
+            ))),
             ..base
         },
         Status::Disabled => disabled(base),
