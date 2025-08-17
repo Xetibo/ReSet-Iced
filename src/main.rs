@@ -827,7 +827,7 @@ impl ReSet {
                 icon_widget(Icon::Exit)
                     .width(Length::Fill)
                     .height(Length::Fill),
-                ButtonVariant::Primary,
+                ButtonVariant::Neutral,
             )
             .on_press(ReSetMessage::Exit)
             .width(Length::Fixed(40.0))
@@ -845,7 +845,7 @@ impl ReSet {
                         .width(Length::Fill)
                         .height(Length::Fill),
                 },
-                ButtonVariant::Primary,
+                ButtonVariant::Neutral,
             )
             .on_press(ReSetMessage::ExpandSidebar(!self.sidebar_open))
             .width(Length::Fixed(40.0))

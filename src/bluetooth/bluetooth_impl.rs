@@ -16,7 +16,7 @@ use crate::{
         loading_spinner::Circular,
         text::{subtitle, title},
     },
-    utils::{to_object_map, TPage},
+    utils::{to_object_map, OxiPadding, TPage},
     ReSetMessage,
 };
 
@@ -154,7 +154,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
         })
     }
 
-    fn view(&self) -> Result<Vec<Element<ReSetMessage>>, ReSetError> {
+    fn view(&'_ self) -> Result<Vec<Element<'_, ReSetMessage>>, ReSetError> {
         let devices = column!(
             oxiced::widgets::oxi_button::button(
                 row!(
@@ -207,7 +207,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
                 BluetoothButtonVariant::Disconnect
             ),
         )
-        .padding(20)
+        .padding(OxiPadding::Large)
         .spacing(30);
         let adapter = column!(
             oxiced::widgets::oxi_button::button(
@@ -222,7 +222,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
             .width(Length::Fill),
             bluetooth_adapter_view(&self.current_adapter, &self.adapters.values().collect())
         )
-        .padding(20)
+        .padding(OxiPadding::Large)
         .spacing(30);
         Ok(vec![match self.page_id {
             BluetoothPageId::Devices => devices.into(),

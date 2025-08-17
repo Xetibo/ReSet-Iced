@@ -1,26 +1,28 @@
 use std::{borrow::Borrow, collections::HashMap, ops::RangeInclusive};
 
 use iced::{
+    Border, Element, Length, Theme,
     alignment::{Horizontal, Vertical},
-    border,
-    widget::{column, container::Style, row, Button, Slider},
-    Element, Length, Theme,
+    border::{self, Radius},
+    widget::{Button, Slider, column, container::Style, row},
 };
-use oxiced::widgets::{
-    oxi_button::{button, ButtonVariant},
-    oxi_slider,
+use oxiced::{
+    theme::theme::OXITHEME,
+    widgets::{
+        oxi_button::{ButtonVariant, button},
+        oxi_slider,
+    },
 };
 use re_set_lib::utils::error::ReSetError;
 
 use crate::{
-    audio::{audio_impl::AudioMsg, dbus_interface::TAudioObject},
-    ReSetMessage,
+    audio::{audio_impl::AudioMsg, dbus_interface::TAudioObject}, components::comborow::{Catalog, StyleFn}, utils::OxiPadding, ReSetMessage
 };
 
 use super::{
     audio_device_card::AudioDeviceCard,
     comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
-    icons::{icon_widget, Icon},
+    icons::{Icon, icon_widget},
     radio::reset_radio,
     text::{content_text, title},
 };
@@ -57,6 +59,49 @@ where
     current_value: u32,
 }
 
+impl<'a, T, L, V, Message, Theme, Renderer> CustomPickList<'a, T, L, V, Message, Theme, Renderer>
+where
+    T: ToString + PartialEq + Clone + 'a,
+    L: Borrow<[T]> + 'a,
+    V: Borrow<T> + 'a,
+    Message: Clone + 'a,
+    Theme: Catalog + 'a,
+    Renderer: iced::advanced::text::Renderer,
+    <Theme as Catalog>::Class<'a>: From<StyleFn<'a, Theme>>
+{
+    fn card_style(self) -> Self {
+        self.style(|_: &Theme, status: iced::widget::pick_list::Status| {
+            let base_style = iced::widget::pick_list::Style {
+                text_color: OXITHEME.text,
+                placeholder_color: OXITHEME.text,
+                handle_color: OXITHEME.primary,
+                background: OXITHEME.mantle.into(),
+                border: Border {
+                    color: OXITHEME.mantle.into(),
+                    // TODO beforepr
+                    width: 2.0,
+                    radius: Radius::new(10.0),
+                },
+            };
+            match status {
+                iced::widget::pick_list::Status::Active => base_style,
+                iced::widget::pick_list::Status::Hovered => {
+                    println!("hovered");
+                    iced::widget::pick_list::Style {
+                    background: OXITHEME.mantle_hover.into(),
+                    ..base_style
+                }},
+                iced::widget::pick_list::Status::Opened { is_hovered } => {
+                    iced::widget::pick_list::Style {
+                        background: OXITHEME.mantle_active.into(),
+                        ..base_style
+                    }
+                }
+            }
+        })
+    }
+}
+
 impl<'a, T, V, L, Message> Card<'a, T, V, L, Message>
 where
     T: ToString + PartialEq + Clone + 'a,
@@ -65,11 +110,12 @@ where
     Message: std::clone::Clone + 'a,
 {
     pub fn new(
-        picker: CustomPickList<'a, T, L, V, Message>,
+        mut picker: CustomPickList<'a, T, L, V, Message>,
         mute_button: Button<'a, Message>,
         slider: Slider<'a, u32, Message>,
         current_value: u32,
     ) -> Self {
+        picker = picker.card_style();
         Self {
             picker,
             mute_button,
@@ -78,12 +124,10 @@ where
         }
     }
 
-    fn style(theme: &Theme) -> Style {
-        let palette = theme.extended_palette();
-
+    fn style(_: &Theme) -> Style {
         Style {
-            background: Some(palette.background.weak.color.into()),
-            border: border::rounded(10),
+            background: Some(OXITHEME.mantle.into()),
+            border: border::rounded(OxiPadding::Medium),
             ..Style::default()
         }
     }
@@ -93,14 +137,14 @@ where
         let percentage = (100.0 / 65536.0 * self.current_value as f32) as u32;
         iced::widget::container(
             column!(
-                self.picker,
+                self.picker.card_style(),
                 row!(
                     self.mute_button,
                     self.slider,
                     content_text(format!("{}%", percentage)),
                 )
-                .padding(20)
-                .spacing(20)
+                .padding(OxiPadding::Large)
+                .spacing(OxiPadding::Large)
                 .align_y(Vertical::Center),
             )
             .align_x(Horizontal::Left),
@@ -145,8 +189,8 @@ where
         }
     }
     Ok(column!(title(OBJ::title()), col.spacing(20))
-        .padding(20)
-        .spacing(20)
+        .padding(OxiPadding::Large)
+        .spacing(OxiPadding::Large)
         .into())
 }
 
@@ -197,7 +241,7 @@ where
     }
     .width(Length::Shrink);
     let mute_button =
-        button(icon, ButtonVariant::Primary).on_press(wrap(T::mute_fn(index, !object.muted())));
+        button(icon, ButtonVariant::Neutral).on_press(wrap(T::mute_fn(index, !object.muted())));
 
     Ok(Card::new(pick_list, mute_button, slider, current_volume))
 }
@@ -223,7 +267,7 @@ where
             icon_widget(T::unmuted_icon())
         }
         .width(Length::Shrink);
-        let mute_button = button(icon, ButtonVariant::Primary)
+        let mute_button = button(icon, ButtonVariant::Neutral)
             .on_press(wrap(T::mute_fn(object.index(), !object.muted())));
 
         let current_volume = get_volume_level(&object.volume());
@@ -292,7 +336,7 @@ where
     }
     .width(Length::Shrink);
     let mute_button =
-        button(icon, ButtonVariant::Primary).on_press(wrap(T::mute_fn(index, !stream.muted())));
+        button(icon, ButtonVariant::Neutral).on_press(wrap(T::mute_fn(index, !stream.muted())));
 
     let card = Card::new(pick_list, mute_button, slider, current_volume);
     Some(card.view())

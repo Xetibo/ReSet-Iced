@@ -4,7 +4,7 @@ use iced::{
     Element,
 };
 
-use crate::utils::rounded_card;
+use crate::utils::{rounded_card, OxiPadding};
 
 use super::text::content_text;
 
@@ -38,17 +38,17 @@ where
         iced::widget::container(
             column!(
                 row!(content_text(self.name), self.radio)
-                    .padding(20)
+                    .padding(OxiPadding::Large)
                     .align_y(Vertical::Center),
                 row!(self.mute_button, self.slider)
-                    .padding(20)
-                    .spacing(20)
+                    .padding(OxiPadding::Large)
+                    .spacing(OxiPadding::Large)
                     .align_y(Vertical::Center),
             )
-            .spacing(20)
+            .spacing(OxiPadding::Large)
             .align_x(Horizontal::Left),
         )
-        .padding(5)
+        .padding(OxiPadding::Small)
         .style(rounded_card)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center)

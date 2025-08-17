@@ -12,13 +12,7 @@ use iced::{
         text::{self, paragraph},
         widget::{tree, Tree},
         Clipboard, Layout, Shell, Text, Widget,
-    },
-    alignment::{self, Vertical},
-    color, event,
-    overlay::menu::{self, Menu},
-    touch,
-    widget::pick_list::{Status, Style},
-    Element, Event, Length, Padding, Pixels, Point, Rectangle, Size, Theme, Vector,
+    }, alignment::{self, Vertical}, color, event, overlay::menu::{self, Menu}, touch, widget::pick_list::{Status, Style}, window, Element, Event, Length, Padding, Pixels, Point, Rectangle, Size, Theme, Vector
 };
 
 pub struct ComboPickerTitle {
@@ -316,11 +310,11 @@ where
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> () {
+        let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
-
+                
                 if state.is_open {
                     // Event wasn't processed by overlay, so cursor was clicked either outside its
                     // bounds or on the drop-down, either way we close the overlay.
@@ -347,7 +341,6 @@ where
             Event::Mouse(mouse::Event::WheelScrolled {
                 delta: mouse::ScrollDelta::Lines { y, .. },
             }) => {
-                let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
                 if state.keyboard_modifiers.command()
                     && cursor.is_over(layout.bounds())
@@ -387,11 +380,30 @@ where
                 }
             }
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-                let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
                 state.keyboard_modifiers = *modifiers;
             }
             _ => (),
+        }  
+        let status = {
+            let is_hovered = cursor.is_over(layout.bounds());
+
+            if state.is_open {
+                Status::Opened { is_hovered }
+            } else if is_hovered {
+                Status::Hovered
+            } else {
+                Status::Active
+            }
+        };
+
+        if let Event::Window(window::Event::RedrawRequested(_now)) = event {
+            self.last_status = Some(status);
+        } else if self
+            .last_status
+            .is_some_and(|last_status| last_status != status)
+        {
+            shell.request_redraw();
         }
     }
 

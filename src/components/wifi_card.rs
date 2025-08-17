@@ -74,7 +74,7 @@ impl<'a> WifiCard<'a, ReSetMessage> {
                     }
                 )
                 .on_submit(self.edit_confirm_msg.clone()),
-                oxi_button::button(text("Confirm"), ButtonVariant::Primary)
+                oxi_button::button(text("Confirm"), ButtonVariant::Neutral)
                     .on_press(self.edit_confirm_msg)
             )
             .spacing(OxiPadding::Medium)
@@ -83,7 +83,7 @@ impl<'a> WifiCard<'a, ReSetMessage> {
             .into()
         } else if self.access_point.stored {
             row!(
-                oxi_button::button(icon_widget(Icon::WifiSettings), ButtonVariant::Primary)
+                oxi_button::button(icon_widget(Icon::WifiSettings), ButtonVariant::Neutral)
                     .on_press(self.edit_msg)
             )
             .height(OxiPadding::XLarge)
@@ -104,7 +104,7 @@ impl<'a> WifiCard<'a, ReSetMessage> {
                         .align_y(Vertical::Center)
                 )
                 .align_x(Horizontal::Left),
-                ButtonVariant::Primary,
+                ButtonVariant::Neutral,
             )
             .on_press(self.connection_msg)
             .style(|theme, state| {

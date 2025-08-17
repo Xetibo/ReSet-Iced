@@ -14,7 +14,7 @@ use crate::{
         rowbutton::{self, RowbuttonPosition},
         text::{content_text, title},
     },
-    utils::rounded_card,
+    utils::{rounded_card, OxiPadding},
     ReSetMessage,
 };
 
@@ -55,8 +55,8 @@ fn create_button<'a>(
                     icon_widget(icon).width(Length::Shrink),
                     content_text(value.alias.clone()),
                 )
-                .spacing(10),
-                ButtonVariant::Primary,
+                .spacing(OxiPadding::Medium),
+                ButtonVariant::Neutral,
             )
             .on_press_maybe(if value.conect_in_progress {
                 None
@@ -102,7 +102,7 @@ pub fn bluetooth_device_buttons<'a>(
         title(title_str),
         iced::widget::Column::with_children(views).width(Length::Fill)
     )
-    .spacing(20)
+    .spacing(OxiPadding::Large)
     .into()
 }
 
@@ -152,8 +152,8 @@ fn card_view<'a>(
             ))
         )
     )
-    .spacing(10)
-    .padding(10)
+    .spacing(OxiPadding::Medium)
+    .padding(OxiPadding::Medium)
     .width(Length::Fill);
     container(col).style(rounded_card).into()
 }

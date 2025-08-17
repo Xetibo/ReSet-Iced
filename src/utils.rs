@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{bluetooth::dbus_interface::TPath, components::text::error_text};
 use iced::{
-    border,
+    border::{self, Radius},
     widget::{column, container::Style, Column, Container},
     Element, Length, Padding, Pixels, Task, Theme,
 };
@@ -92,5 +92,11 @@ impl Into<Pixels> for OxiPadding {
 impl Into<Length> for OxiPadding {
     fn into(self) -> Length {
         Length::Fixed(self as i32 as f32)
+    }
+}
+
+impl Into<Radius> for OxiPadding {
+    fn into(self) -> Radius {
+        Radius::from(self as i32 as f32)
     }
 }
