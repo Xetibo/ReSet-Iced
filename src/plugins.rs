@@ -1,4 +1,9 @@
-use std::{fs::create_dir, io::ErrorKind, path::PathBuf, sync::atomic::AtomicBool};
+use std::{
+    fs::create_dir,
+    io::ErrorKind,
+    path::PathBuf,
+    sync::{atomic::AtomicBool, LazyLock},
+};
 
 use iced::{Element, Task};
 use once_cell::sync::Lazy;
@@ -12,7 +17,7 @@ use crate::PluginFuncs;
 
 pub static LIBS_LOADED: AtomicBool = AtomicBool::new(false);
 pub static LIBS_LOADING: AtomicBool = AtomicBool::new(false);
-static mut LIBS: Vec<libloading::Library> = Vec::new();
+static LIBS: LazyLock<Vec<libloading::Library>> = LazyLock::new(SETUP_LIBS);
 pub static mut PLUGIN_DIR: Lazy<PathBuf> = Lazy::new(|| PathBuf::from(""));
 
 pub static SETUP_PLUGIN_DIR: fn() -> Option<PathBuf> = || -> Option<PathBuf> {
@@ -29,36 +34,39 @@ pub static SETUP_PLUGIN_DIR: fn() -> Option<PathBuf> = || -> Option<PathBuf> {
     }
 };
 
-pub static SETUP_LIBS: fn() = || {
-    let read_dir: fn(PathBuf) = |dir: PathBuf| {
-        let plugin_dir = dir.read_dir();
-        if plugin_dir.is_err() {
-            // do not print error to ignore the usr/lib if not needed
-            return;
-        }
-        let plugin_dir = plugin_dir.unwrap();
-        plugin_dir.for_each(|plugin| {
-            if let Ok(file) = plugin {
-                unsafe {
-                    let path = file.path();
-                    let lib = libloading::Library::new(&path);
-                    if let Ok(lib) = lib {
-                        LIBS.push(lib);
-                    } else {
-                        // TOOD handle
+pub static SETUP_LIBS: fn() -> Vec<libloading::Library> = || {
+    let read_dir: fn(PathBuf) -> Vec<libloading::Library> =
+        |dir: PathBuf| -> Vec<libloading::Library> {
+            let mut libs = Vec::new();
+            let plugin_dir = dir.read_dir();
+            if plugin_dir.is_err() {
+                // do not print error to ignore the usr/lib if not needed
+                return Vec::new();
+            }
+            let plugin_dir = plugin_dir.unwrap();
+            plugin_dir.for_each(|plugin| {
+                if let Ok(file) = plugin {
+                    unsafe {
+                        let path = file.path();
+                        let lib = libloading::Library::new(&path);
+                        if let Ok(lib) = lib {
+                            libs.push(lib);
+                        } else {
+                            // TOOD handle
+                        }
                     }
                 }
-            }
-        });
-    };
+            });
+            libs
+        };
     SETUP_PLUGIN_DIR();
-    read_dir(PathBuf::from("/home/dashie/.config/reset/plugins"));
+    read_dir(PathBuf::from("/home/dashie/.config/reset/plugins"))
 };
 
 pub fn load_plugins() -> Vec<PluginFuncs> {
     let mut plugins = Vec::new();
     unsafe {
-        for lib in LIBS.iter() {
+        for lib in &*LIBS {
             let enter: Result<
                 libloading::Symbol<unsafe extern "C" fn() -> Task<&'static mut dyn ReSetAny>>,
                 libloading::Error,

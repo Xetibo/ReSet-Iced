@@ -1,28 +1,31 @@
 use std::{borrow::Borrow, collections::HashMap, ops::RangeInclusive};
 
 use iced::{
-    Border, Element, Length, Theme,
     alignment::{Horizontal, Vertical},
     border::{self, Radius},
-    widget::{Button, Slider, column, container::Style, row},
+    widget::{column, container::Style, row, Button, Slider},
+    Border, Element, Length, Theme,
 };
 use oxiced::{
-    theme::theme::OXITHEME,
+    theme::theme_impl::OXITHEME,
     widgets::{
-        oxi_button::{ButtonVariant, button},
+        oxi_button::{button, ButtonVariant},
         oxi_slider,
     },
 };
 use re_set_lib::utils::error::ReSetError;
 
 use crate::{
-    audio::{audio_impl::AudioMsg, dbus_interface::TAudioObject}, components::comborow::{Catalog, StyleFn}, utils::OxiPadding, ReSetMessage
+    audio::{audio_impl::AudioMsg, dbus_interface::TAudioObject},
+    components::comborow::{Catalog, StyleFn},
+    utils::OxiPadding,
+    ReSetMessage,
 };
 
 use super::{
     audio_device_card::AudioDeviceCard,
     comborow::{ComboPickerTitle, CustomPickList, PickerVariant},
-    icons::{Icon, icon_widget},
+    icons::{icon_widget, Icon},
     radio::reset_radio,
     text::{content_text, title},
 };
@@ -67,7 +70,7 @@ where
     Message: Clone + 'a,
     Theme: Catalog + 'a,
     Renderer: iced::advanced::text::Renderer,
-    <Theme as Catalog>::Class<'a>: From<StyleFn<'a, Theme>>
+    <Theme as Catalog>::Class<'a>: From<StyleFn<'a, Theme>>,
 {
     fn card_style(self) -> Self {
         self.style(|_: &Theme, status: iced::widget::pick_list::Status| {
@@ -75,9 +78,9 @@ where
                 text_color: OXITHEME.text,
                 placeholder_color: OXITHEME.text,
                 handle_color: OXITHEME.primary,
-                background: OXITHEME.mantle.into(),
+                background: OXITHEME.primary_bg.into(),
                 border: Border {
-                    color: OXITHEME.mantle.into(),
+                    color: OXITHEME.primary_bg,
                     // TODO beforepr
                     width: 2.0,
                     radius: Radius::new(10.0),
@@ -85,15 +88,13 @@ where
             };
             match status {
                 iced::widget::pick_list::Status::Active => base_style,
-                iced::widget::pick_list::Status::Hovered => {
-                    println!("hovered");
-                    iced::widget::pick_list::Style {
-                    background: OXITHEME.mantle_hover.into(),
+                iced::widget::pick_list::Status::Hovered => iced::widget::pick_list::Style {
+                    background: OXITHEME.primary_bg_hover.into(),
                     ..base_style
-                }},
+                },
                 iced::widget::pick_list::Status::Opened { is_hovered } => {
                     iced::widget::pick_list::Style {
-                        background: OXITHEME.mantle_active.into(),
+                        background: OXITHEME.primary_bg_active.into(),
                         ..base_style
                     }
                 }
@@ -126,7 +127,7 @@ where
 
     fn style(_: &Theme) -> Style {
         Style {
-            background: Some(OXITHEME.mantle.into()),
+            background: Some(OXITHEME.primary_bg.into()),
             border: border::rounded(OxiPadding::Medium),
             ..Style::default()
         }
@@ -173,9 +174,9 @@ where
         .collect();
     let mut col = column!(
         object,
-        iced::widget::Space::with_height(10),
-        iced::widget::Rule::horizontal(2),
-        iced::widget::Space::with_height(10),
+        iced::widget::Space::new().height(10),
+        iced::widget::rule::horizontal(2),
+        iced::widget::Space::new().height(10),
     );
     let stream_count = if stream_cards.is_empty() {
         0
@@ -185,7 +186,7 @@ where
     for (i, elem) in stream_cards.into_iter().enumerate() {
         col = col.push(elem);
         if i != stream_count {
-            col = col.push(iced::widget::Rule::horizontal(2));
+            col = col.push(iced::widget::rule::horizontal(2));
         }
     }
     Ok(column!(title(OBJ::title()), col.spacing(20))

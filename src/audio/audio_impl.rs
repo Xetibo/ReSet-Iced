@@ -272,7 +272,7 @@ impl<'a> TPage<AudioMsg, AudioModel<'a>, ()> for AudioModel<'a> {
     }
 
     // TODO beforepr handle errors
-    fn view(&self) -> Result<Vec<Element<ReSetMessage>>, ReSetError> {
+    fn view(&self) -> Result<Vec<Element<'_, ReSetMessage>>, ReSetError> {
         let cards = {
             let card_elements: Vec<Element<ReSetMessage>> = self
                 .cards

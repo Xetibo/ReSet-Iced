@@ -4,12 +4,10 @@ use iced::advanced::layout;
 use iced::advanced::renderer;
 use iced::advanced::widget::tree::{self, Tree};
 use iced::advanced::{self, Clipboard, Layout, Shell, Widget};
-use iced::event;
 use iced::mouse;
 use iced::time::Instant;
 use iced::widget::canvas;
 use iced::window;
-use iced::window::RedrawRequest;
 use iced::{Background, Color, Element, Event, Length, Radians, Rectangle, Renderer, Size, Vector};
 
 use super::easing::{self, Easing};
@@ -237,7 +235,7 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         _tree: &mut Tree,
         _renderer: &Renderer,
         limits: &layout::Limits,

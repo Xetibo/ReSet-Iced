@@ -36,7 +36,7 @@ use network::{
     wireless_impl::{watch_wireless_dbus_signals, WirelessModel},
 };
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
-use plugins::{SETUP_LIBS, SETUP_PLUGIN_DIR};
+use plugins::SETUP_PLUGIN_DIR;
 use re_set_lib::{
     utils::{any::ReSetAny, iced_sidebar::EntryButton},
     write_log_to_file,
@@ -55,6 +55,8 @@ use std::{
 use utils::{display_view_or_error, TPage};
 
 use zbus::{proxy::SignalStream, Connection, Proxy};
+
+use crate::plugins::load_plugins;
 
 mod audio;
 mod bluetooth;
@@ -474,7 +476,7 @@ impl ReSet {
     }
 
     fn theme(&self) -> Theme {
-        oxiced::theme::theme::get_derived_iced_theme()
+        oxiced::theme::theme_impl::get_derived_iced_theme()
     }
 
     async fn setup_daemon() -> Result<ReSetDbusProxy<'static>, iced::Error> {
@@ -555,16 +557,14 @@ impl ReSet {
         model_map.insert(PageId::Network, network_model as &mut dyn ReSetAny);
         model_map.insert(PageId::Bluetooth, bluetooth_model as &mut dyn ReSetAny);
 
-        let plugin_funcs: HashMap<u8, PluginFuncs> = HashMap::new();
-        let index = 0;
+        let mut plugin_funcs: HashMap<u8, PluginFuncs> = HashMap::new();
         // TODO
-        //for plugin in load_plugins() {
-        //    let modelfn = plugin.model.clone();
-        //    let model = unsafe { (modelfn)(&ctx.clone(), &mut () as &mut dyn ReSetAny) };
-        //    model_map.insert(PageId::Plugin(index), model);
-        //    plugin_funcs.insert(index as u8, plugin);
-        //    index += 1;
-        //}
+        for (index, plugin) in load_plugins().into_iter().enumerate() {
+            let modelfn = plugin.model.clone();
+            let model = unsafe { (modelfn)(&ctx.clone(), &mut () as &mut dyn ReSetAny) };
+            model_map.insert(PageId::Plugin(index as u8), model);
+            plugin_funcs.insert(index as u8, plugin);
+        }
         (
             Self {
                 proxy,
@@ -820,7 +820,7 @@ impl ReSet {
         entries
     }
 
-    fn top_row(&self) -> Element<ReSetMessage> {
+    fn top_row(&self) -> Element<'_, ReSetMessage> {
         // TODO use icons
         let close_button: Element<'_, ReSetMessage> = container(
             button(
@@ -860,7 +860,7 @@ impl ReSet {
             .into()
     }
 
-    fn main_elements(&self) -> Vec<Element<ReSetMessage>> {
+    fn main_elements(&self) -> Vec<Element<'_, ReSetMessage>> {
         let main_elements = match self.current_page {
             PageId::Audio => self
                 .model_map
@@ -901,7 +901,7 @@ impl ReSet {
         display_view_or_error(main_elements)
     }
 
-    fn view(&self) -> Element<ReSetMessage> {
+    fn view(&self) -> Element<'_, ReSetMessage> {
         let sidebar_element = sidebar(self.sidebar_elements());
         let main_elements = self.main_elements();
 
@@ -967,11 +967,7 @@ impl ReSet {
 
 pub fn main() -> Result<(), iced::Error> {
     let icon = iced::window::icon::from_file("./assets/ReSet.png"); //.ok();
-    let icon = if let Ok(icon) = icon {
-        Some(icon)
-    } else {
-        None
-    };
+    let icon = icon.ok();
     let window_settings = Settings {
         size: Size::default(),
         position: iced::window::Position::Default,
@@ -996,7 +992,7 @@ pub fn main() -> Result<(), iced::Error> {
     };
 
     SETUP_PLUGIN_DIR();
-    SETUP_LIBS();
+    // SETUP_LIBS();
 
     iced::application(ReSet::new, ReSet::update, ReSet::view)
         .title(ReSet::title)

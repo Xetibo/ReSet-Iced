@@ -7,7 +7,10 @@ use iced::{
     },
     Border, Element, Length, Padding, Shadow, Theme, Vector,
 };
-use oxiced::utils::color::{darken_color, lighten_color};
+use oxiced::{
+    theme::theme_impl::OXITHEME,
+    utils::color::{darken_color, lighten_color},
+};
 use re_set_lib::utils::iced_sidebar::{EntryButton, EntryButtonLevel, EntryCategory};
 
 use crate::ReSetMessage;
@@ -27,7 +30,7 @@ fn disabled(style: Style) -> Style {
 
 fn side_bar_button_style(theme: &Theme, status: Status) -> Style {
     let base = Style {
-        background: Some(iced::Background::Color(color!(0x181825))),
+        background: Some(iced::Background::Color(OXITHEME.mantle)),
         text_color: theme.palette().text,
         border: Border {
             color: iced::Color::TRANSPARENT,
@@ -46,15 +49,15 @@ fn side_bar_button_style(theme: &Theme, status: Status) -> Style {
         Status::Active => base,
         Status::Pressed => Style {
             background: Some(iced::Background::Color(lighten_color(
-                &lighten_color(&color!(0x181825), 10.0),
-                10.0,
+                &lighten_color(&OXITHEME.mantle, OXITHEME.tint_amount),
+                OXITHEME.tint_amount,
             ))),
             ..base
         },
         Status::Hovered => Style {
             background: Some(iced::Background::Color(lighten_color(
-                &color!(0x181825),
-                10.0,
+                &OXITHEME.mantle,
+                OXITHEME.tint_amount,
             ))),
             ..base
         },
@@ -100,7 +103,7 @@ fn create_category<'a>(category: EntryCategory) -> Vec<Element<'a, ReSetMessage>
         .map(create_button)
         .collect();
     sub_buttons.insert(0, create_button(category.main_entry));
-    sub_buttons.push(iced::widget::Rule::horizontal(2).into());
+    sub_buttons.push(iced::widget::rule::horizontal(2).into());
     sub_buttons
 }
 

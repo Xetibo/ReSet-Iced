@@ -173,7 +173,7 @@ impl<'a> TPage<WirelessMsg, WirelessModel<'a>, ()> for WirelessModel<'a> {
         None
     }
 
-    fn view(&self) -> Result<Vec<Element<ReSetMessage>>, ReSetError> {
+    fn view(&self) -> Result<Vec<Element<'_, ReSetMessage>>, ReSetError> {
         let new_ap_cards: Vec<WifiCard<'_, ReSetMessage>> = self
             .new_access_points
             .values()

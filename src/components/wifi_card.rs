@@ -1,10 +1,8 @@
-use std::u8;
-
 use iced::{
     alignment::{Horizontal, Vertical},
     widget::{column, row, text},
     Alignment, Element,
-    Length::{self, Fill},
+    Length::{self},
 };
 use oxiced::widgets::{
     oxi_button::{self, ButtonVariant},

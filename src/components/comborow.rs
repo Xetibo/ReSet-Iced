@@ -12,7 +12,13 @@ use iced::{
         text::{self, paragraph},
         widget::{tree, Tree},
         Clipboard, Layout, Shell, Text, Widget,
-    }, alignment::{self, Vertical}, color, event, overlay::menu::{self, Menu}, touch, widget::pick_list::{Status, Style}, window, Element, Event, Length, Padding, Pixels, Point, Rectangle, Size, Theme, Vector
+    },
+    alignment::{self, Vertical},
+    color,
+    overlay::menu::{self, Menu},
+    touch,
+    widget::pick_list::{Status, Style},
+    window, Element, Event, Length, Padding, Pixels, Point, Rectangle, Size, Theme, Vector,
 };
 
 pub struct ComboPickerTitle {
@@ -221,7 +227,7 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         tree: &mut Tree,
         renderer: &Renderer,
         limits: &layout::Limits,
@@ -309,12 +315,11 @@ where
         _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
-    ) -> () {
+    ) {
         let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                
                 if state.is_open {
                     // Event wasn't processed by overlay, so cursor was clicked either outside its
                     // bounds or on the drop-down, either way we close the overlay.
@@ -341,7 +346,6 @@ where
             Event::Mouse(mouse::Event::WheelScrolled {
                 delta: mouse::ScrollDelta::Lines { y, .. },
             }) => {
-
                 if state.keyboard_modifiers.command()
                     && cursor.is_over(layout.bounds())
                     && !state.is_open
@@ -380,11 +384,10 @@ where
                 }
             }
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-
                 state.keyboard_modifiers = *modifiers;
             }
             _ => (),
-        }  
+        }
         let status = {
             let is_hovered = cursor.is_over(layout.bounds());
 
