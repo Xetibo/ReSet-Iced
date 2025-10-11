@@ -1,16 +1,20 @@
 use iced::{
+    alignment::Vertical,
     widget::{column, container, row},
-    Element, Length,
+    Element, Length, Padding,
 };
-use oxiced::widgets::{
-    oxi_button::{button, ButtonVariant},
-    oxi_radio::OxiRadio,
-    oxi_toggler::OxiToggler,
+use oxiced::{
+    theme::theme_impl::OXITHEME,
+    widgets::{
+        oxi_button::{button, ButtonVariant},
+        oxi_toggler::OxiToggler,
+    },
 };
 
 use crate::{
     components::{
         icons::{icon_widget, Icon},
+        radio::reset_radio,
         rowbutton::{self, RowbuttonPosition},
         text::{content_text, title},
     },
@@ -56,7 +60,7 @@ fn create_button<'a>(
                     content_text(value.alias.clone()),
                 )
                 .spacing(OxiPadding::Medium),
-                ButtonVariant::Neutral,
+                ButtonVariant::PrimaryBg,
             )
             .on_press_maybe(if value.conect_in_progress {
                 None
@@ -74,7 +78,7 @@ fn create_button<'a>(
                     RowbuttonPosition::Between
                 };
                 rowbutton::style(
-                    oxiced::widgets::oxi_button::neutral_button(theme, state),
+                    oxiced::widgets::oxi_button::primary_bg_button(theme, state),
                     at,
                 )
             })
@@ -121,15 +125,19 @@ fn card_view<'a>(
     let path2 = adapter.path.clone();
     let path3 = adapter.path.clone();
     let col = column!(
-        row!(
-            title(adapter.alias.clone()),
-            OxiRadio::new(
-                None::<String>,
-                default_index,
-                index,
-                Some(move |_| wrap(BluetoothMsg::SetBluetoothAdapter(path.clone())))
-            )
-        ),
+        row!(reset_radio(
+            adapter.alias.clone(),
+            index,
+            default_index,
+            move |_| wrap(BluetoothMsg::SetBluetoothAdapter(path.clone()))
+        ))
+        .padding(Padding {
+            top: OXITHEME.padding_md,
+            right: OXITHEME.padding_lg,
+            bottom: OXITHEME.padding_md,
+            left: 0.0,
+        })
+        .align_y(Vertical::Center),
         row!(
             content_text("Powered"),
             OxiToggler::new(adapter.powered).on_toggle(move |value| wrap(

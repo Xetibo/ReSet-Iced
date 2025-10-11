@@ -11,8 +11,7 @@ iced = { version = "0.14.0-dev", features = [
 	"svg",
 	"tokio",
 ], git = "https://github.com/iced-rs/iced" }
-# oxiced = "0.2.0"
-oxiced = { git = "https://github.com/Xetibo/oxiced", branch = "iced14" }
+oxiced = { git = "https://github.com/Xetibo/oxiced"}
 zbus = "5.9.0"
 #re_set-lib = "5.2.5"
 re_set-lib = { git = "https://github.com/Xetibo/ReSet-Lib", branch = "dashie-2" }

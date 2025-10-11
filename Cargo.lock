@@ -1753,9 +1753,9 @@ dependencies = [
 
 [[package]]
 name = "generic-array"
-version = "0.14.7"
+version = "0.14.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+checksum = "1dc8f7d2ded5f9209535e4b3fd4d39c002f30902ff5ce9f64e2c33d549576500"
 dependencies = [
  "typenum",
  "version_check",
@@ -3964,7 +3964,7 @@ dependencies = [
 [[package]]
 name = "oxiced"
 version = "0.5.1"
-source = "git+https://github.com/Xetibo/oxiced?branch=iced14#562fb71acf35115d2c3e035540077e1d0040c054"
+source = "git+https://github.com/Xetibo/oxiced#85785b90d40bac02572aa00bd32a2e5a27ea9c88"
 dependencies = [
  "iced 0.14.0-dev",
  "iced_layershell",
@@ -4999,12 +4999,12 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
+checksum = "17129e116933cf371d018bb80ae557e889637989d8638274fb25622827b03881"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

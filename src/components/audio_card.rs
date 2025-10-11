@@ -242,7 +242,7 @@ where
     }
     .width(Length::Shrink);
     let mute_button =
-        button(icon, ButtonVariant::Neutral).on_press(wrap(T::mute_fn(index, !object.muted())));
+        button(icon, ButtonVariant::SecondaryBg).on_press(wrap(T::mute_fn(index, !object.muted())));
 
     Ok(Card::new(pick_list, mute_button, slider, current_volume))
 }
@@ -258,7 +258,7 @@ where
     let objects: Vec<T> = object_map.clone().into_values().collect();
 
     let create_card = |object: T| {
-        let radio = reset_radio("", object.index(), Some(default_index), |index| {
+        let radio = reset_radio(object.name(), object.index(), Some(default_index), |index| {
             wrap(T::default_fn(index))
         });
 
@@ -268,7 +268,7 @@ where
             icon_widget(T::unmuted_icon())
         }
         .width(Length::Shrink);
-        let mute_button = button(icon, ButtonVariant::Neutral)
+        let mute_button = button(icon, ButtonVariant::SecondaryBg)
             .on_press(wrap(T::mute_fn(object.index(), !object.muted())));
 
         let current_volume = get_volume_level(&object.volume());
@@ -279,7 +279,7 @@ where
             current_volume,
             move |value| wrap(T::volume_fn(index, channels, value)),
         );
-        AudioDeviceCard::new(mute_button, slider, radio, object.name())
+        AudioDeviceCard::new(mute_button, slider, radio)
     };
 
     let cards: Vec<Element<ReSetMessage>> = objects
@@ -337,7 +337,7 @@ where
     }
     .width(Length::Shrink);
     let mute_button =
-        button(icon, ButtonVariant::Neutral).on_press(wrap(T::mute_fn(index, !stream.muted())));
+        button(icon, ButtonVariant::SecondaryBg).on_press(wrap(T::mute_fn(index, !stream.muted())));
 
     let card = Card::new(pick_list, mute_button, slider, current_volume);
     Some(card.view())

@@ -162,7 +162,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
                     icon_widget(Icon::ChevronRight).width(Length::Shrink)
                 )
                 .width(Length::Fill),
-                ButtonVariant::Neutral
+                ButtonVariant::PrimaryBg
             )
             .on_press(BluetoothMsg::SetPageId(BluetoothPageId::Adapter).into())
             .width(Length::Fill),
@@ -182,7 +182,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
                     }
                 )
                 .width(Length::Fill),
-                ButtonVariant::Neutral
+                ButtonVariant::PrimaryBg
             )
             .on_press_maybe(if self.is_scanning {
                 None
@@ -216,7 +216,7 @@ impl<'a> TPage<BluetoothMsg, BluetoothModel<'a>, ()> for BluetoothModel<'a> {
                     icon_widget(Icon::ChevronLeft).width(Length::Shrink)
                 )
                 .width(Length::Fill),
-                ButtonVariant::Neutral
+                ButtonVariant::PrimaryBg
             )
             .on_press(BluetoothMsg::SetPageId(BluetoothPageId::Devices).into())
             .width(Length::Fill),

@@ -20,6 +20,7 @@ use iced::{
     widget::pick_list::{Status, Style},
     window, Element, Event, Length, Padding, Pixels, Point, Rectangle, Size, Theme, Vector,
 };
+use oxiced::{theme::theme_impl::OXITHEME, utils::color::darken_color};
 
 pub struct ComboPickerTitle {
     pub title: String,
@@ -328,6 +329,8 @@ where
                     if let Some(on_close) = &self.on_close {
                         shell.publish(on_close.clone());
                     }
+
+                    shell.capture_event();
                 } else if cursor.is_over(layout.bounds()) {
                     let selected = self.selected.as_ref().map(Borrow::borrow);
 
@@ -341,6 +344,8 @@ where
                     if let Some(on_open) = &self.on_open {
                         shell.publish(on_open.clone());
                     }
+
+                    shell.capture_event();
                 }
             }
             Event::Mouse(mouse::Event::WheelScrolled {
@@ -515,9 +520,7 @@ where
                     bounds.x + bounds.width - self.padding.right,
                     bounds.center_y(),
                 ),
-                color!(0xCDD6F4),
-                // TODO beforepr should be the correct color out of the box
-                //style.handle_color,
+                OXITHEME.text,
                 *viewport,
             );
         }
@@ -549,10 +552,8 @@ where
                 Point::new(bounds.x + self.padding.left, bounds.center_y()),
                 if selected.is_some() {
                     match variant {
-                        TextVariant::Strong => style.text_color,
-                        TextVariant::Weak => color!(0x7C8097),
-                        // TODO beforepr this should automatically have the correct color
-                        //style.placeholder_color,
+                        TextVariant::Strong => OXITHEME.text,
+                        TextVariant::Weak => darken_color(&OXITHEME.text, 0.1),
                     }
                 } else {
                     style.placeholder_color
@@ -567,8 +568,6 @@ where
                 }
             }
             PickerVariant::ComboPicker(combo_title) => {
-                // TODO beforepr why is the wrong title at the top when the title is
-                // vertical::top????
                 draw_text(
                     combo_title.title.clone(),
                     alignment::Vertical::Bottom,
